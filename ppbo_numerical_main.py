@@ -65,8 +65,8 @@ def run_ppbo_loop(objective,initial_queries_xi,initial_queries_x,number_of_actua
     ''' ----------------- MAIN LOOP ------------------------- '''
     
     
-    mu_star_results = [0]*(number_of_actual_queries+len(initial_queries_xi))
-    x_star_results = np.empty([number_of_actual_queries+len(initial_queries_xi),PPBO_settings.D])
+    mustar_results = [0]*(number_of_actual_queries+len(initial_queries_xi))
+    xstar_results = np.empty([number_of_actual_queries+len(initial_queries_xi),PPBO_settings.D])
     results = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,PPBO_settings.D+1)] 
     + ['xi' + str(i) for i in range(1,PPBO_settings.D+1)]
     + ['alpha_star']),dtype=np.float64)
@@ -95,10 +95,10 @@ def run_ppbo_loop(objective,initial_queries_xi,initial_queries_x,number_of_actua
         GP_model.update_feedback_processing_object(np.array(results))
         GP_model.update_data()
         GP_model.update_model()
-        x_star_ = GP_model.FP.unscale(GP_model.x_star_)
-        mu_star_results[i] = GP_model.mu_star_
-        x_star_results[i,:] = x_star_
-        print("x_star of the initialization " + str(i+1)+"/"+str(len(initial_queries_xi))+ ' is ' + str(x_star_))
+        xstar = GP_model.FP.unscale(GP_model.xstar)
+        mustar_results[i] = GP_model.mustar
+        xstar_results[i,:] = xstar
+        print("xstar of the initialization " + str(i+1)+"/"+str(len(initial_queries_xi))+ ' is ' + str(xstar))
         
     if OPTIMIZE_HYPERPARAMETERS_AFTER_INITIALIZATION:
         GP_model.update_model(optimize_theta=OPTIMIZE_HYPERPARAMETERS_AFTER_INITIALIZATION)  
@@ -118,22 +118,22 @@ def run_ppbo_loop(objective,initial_queries_xi,initial_queries_x,number_of_actua
         
         ''' Save results '''
         GP_model.update_feedback_processing_object(np.array(results))
-        GP_model.mu_star_previous_iteration = GP_model.mu_star_#GP_model.mu_star()[1]
+        GP_model.mustar_previous_iteration = GP_model.mustar#GP_model.mustar()[1]
         ''' Update the model '''
         GP_model.update_data()
         if i+1==OPTIMIZE_HYPERPARAMETERS_AFTER_ACTUAL_QUERY_NUMBER:
             GP_model.update_model(optimize_theta=True)     
         else:
             GP_model.update_model(optimize_theta=OPTIMIZE_HYPERPARAMETERS_AFTER_EACH_ITERATION)
-        x_star_ = GP_model.FP.unscale(GP_model.x_star_)
-        print("x_star of the iteration: " + str(x_star_))
-        print("The objective value at that point: " + str(-evaluate_objective(objective,x_star_)))
-        mu_star_results[len(initial_queries_xi)+i] = GP_model.mu_star_
-        x_star_results[len(initial_queries_xi)+i,:] = x_star_
+        xstar = GP_model.FP.unscale(GP_model.xstar)
+        print("xstar of the iteration: " + str(xstar))
+        print("The objective value at that point: " + str(-evaluate_objective(objective,xstar)))
+        mustar_results[len(initial_queries_xi)+i] = GP_model.mustar
+        xstar_results[len(initial_queries_xi)+i,:] = xstar
     
     print('Run done! (Acq.' +str(PPBO_settings.xi_acquisition_function)+' )')
 
-    return results, x_star_results, mu_star_results, GP_model
+    return results, xstar_results, mustar_results, GP_model
 
 
 
@@ -145,9 +145,9 @@ def six_hump_camel(traj):
     initial_queries_xi = np.diag([PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)])
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
-    results,x_star_results,mu_star_results,GP_model = run_ppbo_loop('six_hump_camel',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
-    traj.f_add_result('x_star',x_star_results)
-    traj.f_add_result('mu_star',mu_star_results)
+    results,xstar_results,mustar_results,GP_model = run_ppbo_loop('six_hump_camel',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
+    traj.f_add_result('xstar',xstar_results)
+    traj.f_add_result('mustar',mustar_results)
     return GP_model
 
 
@@ -159,9 +159,9 @@ def levy(traj):
     initial_queries_xi = np.diag([PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)])
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
-    results,x_star_results,mu_star_results,GP_model= run_ppbo_loop('levy',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
-    traj.f_add_result('x_star',x_star_results)
-    traj.f_add_result('mu_star',mu_star_results)
+    results,xstar_results,mustar_results,GP_model= run_ppbo_loop('levy',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
+    traj.f_add_result('xstar',xstar_results)
+    traj.f_add_result('mustar',mustar_results)
     return GP_model
 
 def ackley(traj):
@@ -172,9 +172,9 @@ def ackley(traj):
     initial_queries_xi = np.diag([PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)])
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
-    results,x_star_results,mu_star_results,GP_model = run_ppbo_loop('ackley',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
-    traj.f_add_result('x_star',x_star_results)
-    traj.f_add_result('mu_star',mu_star_results)
+    results,xstar_results,mustar_results,GP_model = run_ppbo_loop('ackley',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
+    traj.f_add_result('xstar',xstar_results)
+    traj.f_add_result('mustar',mustar_results)
     return GP_model
 
 def hartmann6d(traj):
@@ -184,9 +184,9 @@ def hartmann6d(traj):
     initial_queries_xi = np.eye(PPBO_settings_.D)
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
-    results,x_star_results,mu_star_results,GP_model = run_ppbo_loop('hartmann6d',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
-    traj.f_add_result('x_star',x_star_results)
-    traj.f_add_result('mu_star',mu_star_results)
+    results,xstar_results,mustar_results,GP_model = run_ppbo_loop('hartmann6d',initial_queries_xi,initial_queries_x,traj.number_of_actual_queries,PPBO_settings_)
+    traj.f_add_result('xstar',xstar_results)
+    traj.f_add_result('mustar',mustar_results)
     return GP_model
 
 ''' Run experimetns '''
@@ -246,7 +246,7 @@ Sigma = pd.DataFrame(GP_model.Sigma)
 Sigma_inv = GP_model.Sigma_inv
 posterior_covariance = GP_model.posterior_covariance
 posterior_covariance_inv = GP_model.posterior_covariance_inv
-print(GP_model.FP.unscale(GP_model.x_star_))
+print(GP_model.FP.unscale(GP_model.xstar))
 
 from random_fourier_sampler import Hsampler
 h_sampler = Hsampler(GP_model)

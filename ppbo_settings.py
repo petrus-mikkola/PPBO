@@ -9,12 +9,12 @@ class PPBO_settings:
                  D,
                  bounds,
                  xi_acquisition_function,
-                 theta_initial=[0.01,0.5,0.01],
+                 theta_initial=[0.09208856,0.12406055,0.35604923],
                  user_feedback_grid_size=100,    # grid
-                 m=20,                           # number of pseudo comparisons for GP fitting
+                 m=25,                           # number of pseudo comparisons for GP fitting
                  verbose=True,
-                 EI_EXR_mc_samples=250,          # number of points for the integrals to solve
-                 EI_EXR_BO_maxiter=40,
+                 EI_EXR_mc_samples=200,          # number of points for the integrals to solve
+                 EI_EXR_BO_maxiter=30,
                  max_iter_fMAP_estimation=5000):          # max number of iterations for BO
         
         """
@@ -35,7 +35,7 @@ class PPBO_settings:
         """
         self.max_iter_fMAP_estimation = max_iter_fMAP_estimation
         self.fMAP_optimizer = 'trust-exact'   #scipy optimizer for f_MAP-estimation: trust-krylov or trust-exact
-        self.mu_star_finding_trials = 5  #This depends on the noise level. #Good default values is 1.
+        self.mustar_finding_trials = 4  #This depends on the noise level. #Good default values is 1.
          
         '''HYPERPARAMETER INITIAL VALUES'''
         self.theta_initial = theta_initial #Intial hyperparameters. Put None if you want keep default hyper-parameters.

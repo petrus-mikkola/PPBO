@@ -1,16 +1,12 @@
 import os
-import time
 from datetime import datetime
-import psutil #to kill python processes i.e. close windows
 
 import ase
 import ase.visualize
-import ase.gui.gui  
-
+import nglview
+import ipywidgets as widgets
 import pandas as pd
 import numpy as np
-import tkinter as tk
-from tkinter import ttk
 
 from Camphor_Copper.create_111_camphor_func import create_file
 from Camphor_Copper.create_111_camphor_func import create_geometry
@@ -41,6 +37,7 @@ class GUI_session:
         self.user_feedback = None  #variable to store user feedback
         self.user_feedback_was_given = False  
         self.popup_configuration_movie_has_been_called = False
+        self.movie = None
         
         self.results = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
@@ -72,59 +69,19 @@ class GUI_session:
             function_arguments = function_arguments.to_dict('records')[0]
             trajectory.append(create_geometry(**function_arguments))      
         ase.io.write(path_from_root_to_files+'movie.traj',images=trajectory)
-            
-       
-    def popup_configuration_movie(self):
-       
-        if not self.popup_configuration_movie_has_been_called:
-            movie = ase.io.read(path_from_root_to_files+'movie.traj', index=':')
-            ase.visualize.view(movie)
-        else:
-            PROCNAME = "python" #AD-HOC SOLUTION TO SHUT DOWN PREVIOUS GUI WINDOW!!!!!
-            for proc in psutil.process_iter():
-                if proc.name() == PROCNAME:
-                    proc.kill()
-            movie = ase.io.read(path_from_root_to_files+'movie.traj', index=':')
-            ase.visualize.view(movie)
-        self.popup_configuration_movie_has_been_called = True
-     
-    def popup_message(self):
-        popup = tk.Tk()
-        popup.attributes('-topmost', True) #The message is always on the top
-        #popup.wm_title("Which configuration you expect to achieve the lowest energy?")
-        popup.wm_title(" ")
-        label = ttk.Label(popup, text="Type number: ", 
-                           font=("Helvetica", 14))
-        E1 = ttk.Entry(popup, text="")
-        B2 = ttk.Button(popup, text="Confirm", command = lambda: self.buttom_action("confirm",popup,E1)) 
-        B3 = ttk.Button(popup, text="I dont't know.", command = lambda: self.buttom_action("dont_know",popup,E1)) 
-        label.pack(side="top", fill="x", pady=10)    
-        E1.pack()
-        B2.pack()
-        B3.pack()
-        popup.mainloop()   
-
-    def buttom_action(self,user_input,popup,E1):
-        """
-        Decides what happens when one of three buttons is clicked
-        """
-        if user_input=="confirm":
-            typed_value = float(E1.get())
-            if typed_value>self.user_feedback_grid_size or typed_value < 1:
-                print("Invalid input!")
-                typed_value = 1
-            self.user_feedback = self.current_xi_grid[(int(typed_value)-1),:] #i.e. typed value - 1 !!
-            print("--- Feedback ---")
-            print("Typed value: " + str(typed_value))
-            print("... converted to: " + str(self.user_feedback))
-            self.user_feedback_was_given = True
-        elif user_input=="dont_know":
-            raise NotImplementedError
-        else:
-            print("Error, something strange happened!")
+        movie = ase.io.read(path_from_root_to_files+'movie.traj', index=':')
+        self.movie = movie
     
-        popup.destroy()  #Shut down tkinter.Tk() instance 
-        time.sleep(0.2)
+    def getMiniGUI(self):
+        view = nglview.show_asetraj(self.movie)
+        view.parameters = dict(background_color='white',camera_type='perpective',camera_fov=15)
+        button = widgets.Button(description='Confirm',disabled=False,button_style='')
+        def confirm(event):
+            typed_value = int(view.frame)
+            self.user_feedback = self.current_xi_grid[(int(typed_value)),:]
+            self.user_feedback_was_given = True                
+        button.on_click(confirm)
+        return view,button
         
     def save_results(self):
         res = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
@@ -138,20 +95,11 @@ class GUI_session:
         res.loc[0,:] = new_row
         self.results=self.results.append(res, ignore_index=True)
 
-    def run_iteration(self,allow_feedback):
-        """
-        Runs one iteration of the session.
-        Makes sure that configurations are set correctly.
-        """
+    def initialize_iteration(self,x,xi):
+        self.set_x(x)
+        self.set_xi(xi)
         self.create_xi_grid()
-        if allow_feedback:
-            while not self.user_feedback_was_given:
-                self.create_movie_of_configuration()
-                self.popup_configuration_movie()
-                self.popup_message()
-                print("Iteration done!")
-            self.user_feedback_was_given = False
-            self.save_results()
+        self.create_movie_of_configuration()
         
 
 def generate_optimal_configuration(x_star_unscaled):
@@ -160,8 +108,8 @@ def generate_optimal_configuration(x_star_unscaled):
     create_file(**dict_x_star) #x_star
     system = ase.io.read(path_from_root_to_files+'geometry.in')
     HTML = ase.visualize.view(system, viewer="x3d").data   
-    filename = path_from_root_to_files+'optimal_x_'+str(datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))+'.html'
-    file = open(filename,'w') 
+    filename = 'optimal_x_'+str(datetime.now().strftime("%d-%m-%Y_%H-%M-%S"))+'.html'
+    file = open(path_from_root_to_files+filename,'w') 
     file.write(HTML) 
     file.close()
     return filename

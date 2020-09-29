@@ -21,7 +21,7 @@ def next_query(PPBO_settings,GP_model,unscale=True):
     
     if PPBO_settings.xi_acquisition_function=='EI': #expceted improvement by projective preferential query
         xi_next, x_next = maximize_EI(xi_dims,GP_model,PPBO_settings)
-    elif PPBO_settings.xi_acquisition_function=='EI_fixed_x': #EI but x (non-zero coords.) is fixed to x_star
+    elif PPBO_settings.xi_acquisition_function=='EI_fixed_x': #EI but x (non-zero coords.) is fixed to xstar
         xi_next, x_next = maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings)   
     elif PPBO_settings.xi_acquisition_function=='EXR': #explore, i.e. varmax
         xi_next, x_next = maximize_varmax(xi_dims,GP_model,PPBO_settings)
@@ -58,11 +58,11 @@ def EI(xi,x,GP_model,mc_samples):
     m = 80 
     xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='evenly',alpha_star=None,m=m,is_scaled=True)
     f_post_mean,f_post_covar = GP_model.mu_Sigma_pred(xi_grid)
-    mu_star = GP_model.mu_star_
+    mustar = GP_model.mustar
     z = [0]*mc_samples
     for i in range(0,mc_samples):
         f_max = np.max(np.random.multivariate_normal(f_post_mean,f_post_covar)) #predict/sample GP
-        z[i] = np.max([f_max-mu_star,0])   
+        z[i] = np.max([f_max-mustar,0])   
     return -np.mean(z)
 
 def EI_to_maximize(xi_plus_x,xi_dims,x_dims,GP_model,mc_samples):
@@ -95,18 +95,18 @@ def maximize_EI(xi_dims,GP_model,PPBO_settings):
 
 ''' --------------------------------------'''
 
-''' Expected Improvement by projective preferential query with fixed reference vector x to x_star'''
-def EI_fixed_x_to_maximize(xi,x_star,xi_dims,GP_model,mc_samples):
+''' Expected Improvement by projective preferential query with fixed reference vector x to xstar'''
+def EI_fixed_x_to_maximize(xi,xstar,xi_dims,GP_model,mc_samples):
     xi = xi[0] #THIS IS NEEDED ONLY IF BO IS THE OPTIMIZER!!!! OTHERWISE COMMENT THIS OUT!!!
-    xi_ = x_star.copy()
+    xi_ = xstar.copy()
     xi_[xi_dims] = xi
-    return EI(xi_,x_star,GP_model,mc_samples)
+    return EI(xi_,xstar,GP_model,mc_samples)
 def maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings):
-    x_star = GP_model.x_star_.copy()
+    xstar = GP_model.xstar.copy()
     x_dims = [i for i in range(GP_model.D) if not i in xi_dims]
     #BayesianOptimization
     bounds = [{'name': 'var_'+str(d), 'type': 'continuous', 'domain': (0,1)} for d in xi_dims]
-    BO = BayesianOptimization(lambda xi: EI_fixed_x_to_maximize(xi,x_star,xi_dims,GP_model,PPBO_settings.mc_samples), 
+    BO = BayesianOptimization(lambda xi: EI_fixed_x_to_maximize(xi,xstar,xi_dims,GP_model,PPBO_settings.mc_samples), 
                               domain=bounds,
                               optimize_restarts = 0,
                               normalize_Y=True)
@@ -115,7 +115,7 @@ def maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings):
     x = np.zeros(GP_model.D)
     xi = np.zeros(GP_model.D)
     xi[xi_dims] = res
-    x[x_dims] = x_star[x_dims]
+    x[x_dims] = xstar[x_dims]
     xi = perturbate_zerocoordinates(xi,xi_dims)
     x = perturbate_zerocoordinates(x,x_dims)
     return xi, x
@@ -182,13 +182,13 @@ def PCD_next_xi(PPBO_settings):
     return I[:,d-1]
 
 def EXT_next_xi(PPBO_settings,GP_model):
-    x_star = GP_model.x_star_.copy()
-    x_star[x_star==0] = 1e-7 #If some coordinate is zero, add epsilon so selections of type where(x_star=0) works.
+    xstar = GP_model.xstar.copy()
+    xstar[xstar==0] = 1e-7 #If some coordinate is zero, add epsilon so selections of type where(xstar=0) works.
     d = int(PPBO_settings.dim_query_prev_iter + 1)
     if d > PPBO_settings.D:
         d = 1
     PPBO_settings.dim_query_prev_iter = d
-    xi_next = x_star
+    xi_next = xstar
     xi_next[d-1] = 0
     return xi_next
 
@@ -200,8 +200,8 @@ def next_x_given_xi(xi,GP_model,PPBO_settings):
     nonzero_coords = list(np.where(xi==0)[0])
     x_next = np.zeros(PPBO_settings.D)
     if PPBO_settings.x_acquisition_function == "exploit":
-        x_star = GP_model.x_star_.copy()
-        x_next[nonzero_coords] = x_star[nonzero_coords]
+        xstar = GP_model.xstar.copy()
+        x_next[nonzero_coords] = xstar[nonzero_coords]
     elif PPBO_settings.x_acquisition_function == "random":
         x_next[nonzero_coords] = np.random.uniform(0, 1, (1, len(nonzero_coords)))[0]
     else:

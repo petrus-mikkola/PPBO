@@ -57,10 +57,10 @@ class GPModel:
         self.f_MAP = None
         self.max_iter_fMAP_estimation = PPBO_settings.max_iter_fMAP_estimation
         self.fMAP_optimizer = PPBO_settings.fMAP_optimizer
-        self.mu_star_finding_trials = PPBO_settings.mu_star_finding_trials
-        self.mu_star_previous_iteration = 0
-        self.mu_star_ = None
-        self.x_star_ = None
+        self.mustar_finding_trials = PPBO_settings.mustar_finding_trials
+        self.mustar_previous_iteration = 0
+        self.mustar = None
+        self.xstar = None
         
  
     ''' --- Wrapper functions --- '''
@@ -105,7 +105,7 @@ class GPModel:
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
         if self.verbose: print("Computing mu_star and x_star ...")
         start = time.time()
-        self.x_star_, self.mu_star_  = self.mu_star()
+        self.xstar, self.mustar  = self.mu_star()
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
     
     ''' Auxiliary function '''
@@ -126,10 +126,7 @@ class GPModel:
         X2sq = np.sum(np.square(X2),1)
         sqdist = -2.*np.dot(X1, X2.T) + (X1sq[:,None] + X2sq[None,:])
         sqdist = np.clip(sqdist, 0, np.inf)
-        return sigma_f**2 * np.exp(-0.5*sqdist/(l**2))
-    
-#        sqdist = np.sum(X1**2, 1).reshape(-1, 1) + np.sum(X2**2, 1) - 2 * np.dot(X1, X2.T)
-#        return sigma_f**2 * np.exp(-(1/2*l**2)*sqdist)    
+        return sigma_f**2 * np.exp(-0.5*sqdist/(l**2))  
             
     @staticmethod
     def RQ_kernel(X1, X2, theta):
@@ -281,7 +278,7 @@ class GPModel:
     ''' --- Evidence --- '''
     
     def evidence(self,theta,f_initial):
-        print('---------- Iter results ----------------')
+        if self.verbose: print('---------- Iter results ----------------')
         Sigma_ = self.create_Gramian(self.X,self.X,self.kernel,theta)
         Sigma_inv_ = pd_inverse(Sigma_)
         f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
@@ -297,10 +294,10 @@ class GPModel:
         determinant = sign*np.exp(logdet)
         #evidence = np.exp(self.T(f_MAP_,theta,Sigma_inv_))*np.power(determinant,-0.5)
         log_evidence = self.T(f_MAP_,theta,Sigma_inv_) - 0.5*np.log(determinant)
-        print('(scaled) Log-evidence: ' + str(log_evidence))
-        print('Hyper-parameters: ' + str(theta))
+        if self.verbose: print('(scaled) Log-evidence: ' + str(log_evidence))
+        if self.verbose: print('Hyper-parameters: ' + str(theta))
         if np.isnan(log_evidence):
-            print('Nan log-evidence!')
+            if self.verbose: print('Nan log-evidence!')
             return -50
         else:
             return log_evidence
@@ -347,7 +344,7 @@ class GPModel:
     
     def optimize_theta(self):
         ''' Optimizes all hyper-parameters (including noise) by maximizing the evidence '''
-        print("Hyper-parameter optimization begins...")
+        print("Hyperparameter optimization begins...")
         start = time.time()
         #BayesianOptimization
         #Higher lengthscale generates more accurate GP mean (and location of maximizer of mean)
@@ -362,18 +359,18 @@ class GPModel:
                                   normalize_Y=True,
                                   initial_design_numdata=20)
         BO.run_optimization(max_iter = 50)
-        if self.verbose: print('Optimization of hyper-parameters took ' + str(time.time()-start) + ' seconds.')
+        if self.verbose: print('Optimization of hyperparameters took ' + str(time.time()-start) + ' seconds.')
         self.theta = BO.x_opt
-        if self.verbose: print("The resulting theta is "+ str(self.theta))
+        if self.verbose: print("The optimized theta is "+ str(self.theta))
         
-    def mu_star(self,mu_star_finding_trials=None):
+    def mu_star(self,mustar_finding_trials=None):
         ''' Function finds the optimal predictive mean and the maximizer x'''
-        if mu_star_finding_trials is None:
-            mu_star_finding_trials = self.mu_star_finding_trials
+        if mustar_finding_trials is None:
+            mustar_finding_trials = self.mustar_finding_trials
         #Global seach with constraints (DIFFERENTIAL EVOLUTION OPTIMIZATION)
         bounds = self.bounds
         min_ = 10**24
-        for i in range(0,mu_star_finding_trials): #How many times mu_star is tried to find? 
+        for i in range(0,mustar_finding_trials): #How many times mu_star is tried to find? 
             res = scipy.optimize.differential_evolution(self.mu_pred_neq, bounds,updating='immediate', disp=False) 
             #print(res.x) #to monitor how stable are results
             if res.fun < min_:
