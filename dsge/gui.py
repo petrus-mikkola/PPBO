@@ -98,7 +98,7 @@ class GUI_session:
         @delayed
         @wrap_non_picklable_objects
         def func_async_wrapped(conf,i, *args):
-            path_from_root_to_files = os.getcwd() + '/DSGE/'  #CHECK THAT THIS IS CORRECT
+            path_from_root_to_files = os.getcwd() + '/dsge/'  #CHECK THAT THIS IS CORRECT
             octave = Oct2Py()
             octave.addpath(r'/usr/lib/dynare/matlab')  #CHECK THAT THIS IS CORRECT
             octave.cd(path_from_root_to_files) 

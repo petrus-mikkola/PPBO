@@ -8,7 +8,7 @@
 # Camphor rotation angles alpha, beta and gamma (degrees)
 
 import os 
-path_from_root_to_files = os.getcwd() + '/Camphor_Copper/'
+path_from_root_to_files = os.getcwd() + '/camphor_copper/'
 
 
 import numpy as np

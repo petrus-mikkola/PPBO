@@ -1,4 +1,5 @@
 import os
+import sys
 from datetime import datetime
 
 import ase
@@ -8,11 +9,11 @@ import ipywidgets as widgets
 import pandas as pd
 import numpy as np
 
-from Camphor_Copper.create_111_camphor_func import create_file
-from Camphor_Copper.create_111_camphor_func import create_geometry
+from create_111_camphor_func import create_file
+from create_111_camphor_func import create_geometry
 from feedback_processing import FeedbackProcessing
 
-path_from_root_to_files = os.getcwd() + '/Camphor_Copper/'
+path_from_root_to_files = os.getcwd() + '/camphor_copper/'
 
 
 class GUI_session:
@@ -75,6 +76,7 @@ class GUI_session:
     def getMiniGUI(self):
         view = nglview.show_asetraj(self.movie)
         view.parameters = dict(background_color='white',camera_type='perpective',camera_fov=15)
+        view._camera_orientation = [-28.583735327243016, -0.2970873285220947, 1.198387795047608, 0, -0.3455812695981218, 28.584920668432527, -1.1563751171127739, 0, -1.1853133653976955, -1.1697730312356562, -28.561879887836003, 0, -7.061999797821045, -8.524999618530273, -8.855999946594238, 1] #Default camera view
         button = widgets.Button(description='Confirm',disabled=False,button_style='')
         def confirm(event):
             typed_value = int(view.frame)

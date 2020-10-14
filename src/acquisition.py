@@ -10,7 +10,7 @@ def next_query(PPBO_settings,GP_model,unscale=True):
     start = time.time()
     
     ''' How next dims for xi are determined? EI and EXR'''
-    if PPBO_settings.xi_acquisition_function=='EI' or PPBO_settings.xi_acquisition_function=='EXR' or PPBO_settings.xi_acquisition_function=='EI_fixed_x':
+    if PPBO_settings.xi_acquisition_function=='EI' or PPBO_settings.xi_acquisition_function=='EXR' or PPBO_settings.xi_acquisition_function=='EI-FIXEDX':
         #Cyclically w.r.t previous dims? 
         xi_dims = list((np.array(PPBO_settings.xi_dims_prev_iter) + 1)%PPBO_settings.D)
         PPBO_settings.xi_dims_prev_iter = xi_dims
@@ -21,8 +21,20 @@ def next_query(PPBO_settings,GP_model,unscale=True):
     
     if PPBO_settings.xi_acquisition_function=='EI': #expceted improvement by projective preferential query
         xi_next, x_next = maximize_EI(xi_dims,GP_model,PPBO_settings)
-    elif PPBO_settings.xi_acquisition_function=='EI_fixed_x': #EI but x (non-zero coords.) is fixed to xstar
-        xi_next, x_next = maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings)   
+    elif PPBO_settings.xi_acquisition_function=='EI-EXT-FAST': #
+        xi_next = EId_xstar(GP_model,PPBO_settings.mc_samples)
+        x_next = next_x_given_xi(xi_next,GP_model,PPBO_settings)
+    elif PPBO_settings.xi_acquisition_function=='EI-EXT': 
+        xi_next = EId_integrate(GP_model,PPBO_settings.mc_samples)
+        x_next = next_x_given_xi(xi_next,GP_model,PPBO_settings)
+    elif PPBO_settings.xi_acquisition_function=='EI-FIXEDX': #EI but x (non-zero coords.) is fixed to xstar
+        xi_next, x_next = maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings)
+    elif PPBO_settings.xi_acquisition_function=='EI-VARMAX': 
+        xi_next = EId_integrate(GP_model,PPBO_settings.mc_samples)
+        x_next = next_x_given_xi(xi_next,GP_model,PPBO_settings)
+    elif PPBO_settings.xi_acquisition_function=='EI-VARMAX-FAST': 
+        xi_next = EId_xstar(GP_model,PPBO_settings.mc_samples)
+        x_next = next_x_given_xi(xi_next,GP_model,PPBO_settings)
     elif PPBO_settings.xi_acquisition_function=='EXR': #explore, i.e. varmax
         xi_next, x_next = maximize_varmax(xi_dims,GP_model,PPBO_settings)
     elif PPBO_settings.xi_acquisition_function=="RAND": #random
@@ -63,7 +75,8 @@ def EI(xi,x,GP_model,mc_samples):
     for i in range(0,mc_samples):
         f_max = np.max(np.random.multivariate_normal(f_post_mean,f_post_covar)) #predict/sample GP
         z[i] = np.max([f_max-mustar,0])   
-    return -np.mean(z)
+    return np.mean(z)
+
 
 def EI_to_maximize(xi_plus_x,xi_dims,x_dims,GP_model,mc_samples):
     xi_plus_x = xi_plus_x[0] #THIS IS NEED ONLY IF BO IS THE OPTIMIZER!!!! OTHERWISE COMMENT THIS OUT!!!
@@ -72,14 +85,12 @@ def EI_to_maximize(xi_plus_x,xi_dims,x_dims,GP_model,mc_samples):
     xi[xi_dims] = xi_plus_x[xi_dims]
     x[x_dims] = xi_plus_x[x_dims]
     return EI(xi,x,GP_model,mc_samples)
-
-
 def maximize_EI(xi_dims,GP_model,PPBO_settings):
     x_dims = [i for i in range(GP_model.D) if not i in xi_dims]
     
     #BayesianOptimization
     bounds = [{'name': 'var_'+str(d), 'type': 'continuous', 'domain': (0,1)} for d in range(1,GP_model.D+1)]
-    BO = BayesianOptimization(lambda xi_plus_x: EI_to_maximize(xi_plus_x, xi_dims,x_dims,GP_model,PPBO_settings.mc_samples), 
+    BO = BayesianOptimization(lambda xi_plus_x: -EI_to_maximize(xi_plus_x, xi_dims,x_dims,GP_model,PPBO_settings.mc_samples), 
                               domain=bounds,
                               optimize_restarts = 0,
                               normalize_Y=True)
@@ -92,10 +103,6 @@ def maximize_EI(xi_dims,GP_model,PPBO_settings):
     xi = perturbate_zerocoordinates(xi,xi_dims)
     x = perturbate_zerocoordinates(x,x_dims)
     return xi, x
-
-''' --------------------------------------'''
-
-''' Expected Improvement by projective preferential query with fixed reference vector x to xstar'''
 def EI_fixed_x_to_maximize(xi,xstar,xi_dims,GP_model,mc_samples):
     xi = xi[0] #THIS IS NEEDED ONLY IF BO IS THE OPTIMIZER!!!! OTHERWISE COMMENT THIS OUT!!!
     xi_ = xstar.copy()
@@ -106,7 +113,7 @@ def maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings):
     x_dims = [i for i in range(GP_model.D) if not i in xi_dims]
     #BayesianOptimization
     bounds = [{'name': 'var_'+str(d), 'type': 'continuous', 'domain': (0,1)} for d in xi_dims]
-    BO = BayesianOptimization(lambda xi: EI_fixed_x_to_maximize(xi,xstar,xi_dims,GP_model,PPBO_settings.mc_samples), 
+    BO = BayesianOptimization(lambda xi: -EI_fixed_x_to_maximize(xi,xstar,xi_dims,GP_model,PPBO_settings.mc_samples), 
                               domain=bounds,
                               optimize_restarts = 0,
                               normalize_Y=True)
@@ -119,7 +126,39 @@ def maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings):
     xi = perturbate_zerocoordinates(xi,xi_dims)
     x = perturbate_zerocoordinates(x,x_dims)
     return xi, x
-''' --------------------------------------'''
+def EId_xstar(GP_model,mc_samples):
+    xstar = GP_model.xstar.copy()
+    EIvals = [0]*GP_model.D
+    xis = np.eye(GP_model.D)
+    for d in range(GP_model.D):
+        xi = xis[d]
+        xstar_ = xstar.copy()
+        xstar_[d] = 0
+        EIvals[d] = EI(xi,xstar_,GP_model,mc_samples)
+    dstar = np.argmax(EIvals)
+    xistar = xis[dstar] #best standard unit vector
+    xstar[dstar] = 0
+    return xistar
+def EId_integrate(GP_model,mc_samples):
+    mc_samples2 = 50
+    EIvals = [0]*GP_model.D
+    xis = np.eye(GP_model.D)
+    for d in range(GP_model.D):
+        xi = xis[d]
+        xs = np.random.uniform(0, 1, (mc_samples2,GP_model.D))
+        xs[:,d] = 0
+        EIval = 0
+        for x in xs:
+            EIval+=EI(xi,x,GP_model,mc_samples)
+        EIvals[d] = EIval/mc_samples2
+    dstar = np.argmax(EIvals)
+    xistar = xis[dstar] #best standard unit vector
+    xstar = GP_model.xstar.copy()
+    xstar[dstar] = 0
+    return xistar
+    
+
+
 
 
 ''' Variance maximization by projective query (varmax) '''
@@ -131,7 +170,7 @@ def varmax(xi,x,GP_model,mc_samples):
     for i in range(0,mc_samples):
         f_max = np.max(np.random.multivariate_normal(f_post_mean,f_post_covar)) #predict/sample GP
         z[i] = f_max
-    return -float(np.mean(np.power(z-np.mean(z),2)))
+    return float(np.mean(np.power(z-np.mean(z),2)))
 
 def varmax_to_maximize(xi_plus_x,xi_dims,x_dims,GP_model,mc_samples):
     xi_plus_x = xi_plus_x[0] #THIS IS NEED ONLY IF BO IS THE OPTIMIZER!!!! OTHERWISE COMMENT THIS OUT!!!
@@ -147,7 +186,7 @@ def maximize_varmax(xi_dims,GP_model,PPBO_settings):
     
     #BayesianOptimization
     bounds = [{'name': 'var_'+str(d), 'type': 'continuous', 'domain': (0,1)} for d in range(1,GP_model.D+1)]
-    BO = BayesianOptimization(lambda xi_plus_x: varmax_to_maximize(xi_plus_x, xi_dims,x_dims,GP_model,PPBO_settings.mc_samples), 
+    BO = BayesianOptimization(lambda xi_plus_x: -varmax_to_maximize(xi_plus_x, xi_dims,x_dims,GP_model,PPBO_settings.mc_samples), 
                               domain=bounds,
                               optimize_restarts = 0,
                               normalize_Y=True)
@@ -161,6 +200,18 @@ def maximize_varmax(xi_dims,GP_model,PPBO_settings):
     x = perturbate_zerocoordinates(x,x_dims)
     return xi, x
 
+def maximize_varmax_given_xi(xi,GP_model,PPBO_settings):
+    bounds = [{'name': 'var_'+str(d), 'type': 'continuous', 'domain': (0,1)} for d in range(1,GP_model.D+1)]
+    BO = BayesianOptimization(lambda x: -varmax(xi,x,GP_model,PPBO_settings.mc_samples), 
+                              domain=bounds,
+                              optimize_restarts = 0,
+                              normalize_Y=True)
+    BO.run_optimization(max_iter = PPBO_settings.BO_maxiter)
+    x_next = BO.x_opt     
+    zero_coords = list(np.where(xi!=0)[0])
+    x_next[zero_coords] = 0
+    return x_next
+    
 ''' --------------------------------------'''
 
 
@@ -202,6 +253,8 @@ def next_x_given_xi(xi,GP_model,PPBO_settings):
     if PPBO_settings.x_acquisition_function == "exploit":
         xstar = GP_model.xstar.copy()
         x_next[nonzero_coords] = xstar[nonzero_coords]
+    elif PPBO_settings.x_acquisition_function == "varmax":
+        x_next = maximize_varmax_given_xi(xi,GP_model,PPBO_settings)
     elif PPBO_settings.x_acquisition_function == "random":
         x_next[nonzero_coords] = np.random.uniform(0, 1, (1, len(nonzero_coords)))[0]
     else:

@@ -21,8 +21,8 @@ class GPModel:
     """
     
     COVARIANCE_SHRINKAGE = 1e-6 #An amount of shrinkage applied to Sigma
-    #Something between 1e-7 - 1e-2 depending how far off are hyperparameter values (low value induces more accurate estimates but is numerically more unstable)
-    #Higher value increases difference to random Fourier features approximation of f
+    #Low value induces more accurate estimates but is numerically more unstable)
+    #Note! Higher value increases difference to random Fourier features approximation of f
 
     def __init__(self, PPBO_settings):
         """
@@ -170,7 +170,7 @@ class GPModel:
         if self.theta[2] is None:
             self.theta[2] = 0.01
         if self.theta[0] is None:
-            self.theta[0] = 0.01  #if too low, then zeros encountered in sigmas.... but too much noise leads to very inaccurate estimates mu_star, etc...!!!
+            self.theta[0] = 0.01 
     
     ''' --- Functional T --- '''
     
@@ -278,6 +278,13 @@ class GPModel:
     ''' --- Evidence --- '''
     
     def evidence(self,theta,f_initial):
+        def prior(theta):
+            ''' Hyperparameter priors. This stabilizes the optimization '''
+            #https://keisan.casio.com/exec/system/1180573226
+            priortheta0 = scipy.stats.beta.pdf(theta[0], 2, 12) #loc around 0.1
+            priortheta1 = scipy.stats.beta.pdf(theta[1], 10, 35) #loc around 0.2
+            priortheta2 = scipy.stats.beta.pdf(theta[2], 2, 2) #loc around 0.5
+            return np.log(priortheta0)+np.log(priortheta1)+np.log(priortheta2)
         if self.verbose: print('---------- Iter results ----------------')
         Sigma_ = self.create_Gramian(self.X,self.X,self.kernel,theta)
         Sigma_inv_ = pd_inverse(Sigma_)
@@ -293,14 +300,16 @@ class GPModel:
         (sign, logdet) = np.linalg.slogdet(matrix)
         determinant = sign*np.exp(logdet)
         #evidence = np.exp(self.T(f_MAP_,theta,Sigma_inv_))*np.power(determinant,-0.5)
-        log_evidence = self.T(f_MAP_,theta,Sigma_inv_) - 0.5*np.log(determinant)
+        log_evidence = self.T(f_MAP_,theta,Sigma_inv_) - 0.5*np.log(determinant) 
         if self.verbose: print('(scaled) Log-evidence: ' + str(log_evidence))
         if self.verbose: print('Hyper-parameters: ' + str(theta))
-        if np.isnan(log_evidence):
+        value = log_evidence + prior(theta)
+        if np.isnan(value) or not np.isfinite(value):
             if self.verbose: print('Nan log-evidence!')
-            return -50
+            return -500
         else:
-            return log_evidence
+            if self.verbose: print('(scaled) Log-evidence + Log-prior: ' + str(value))
+            return value
         
         ''' An implementation based on Cholesky-decomposition '''
         #try:
@@ -351,7 +360,7 @@ class GPModel:
         #However, higher lengthscale also generates less accurate argmax distribution (argmax samples are widepread)   
         ''' Bounds for hyperparameters: When COVARIANCE_SHRINKAGE = 1e-6'''
         bounds = [{'name': 'sigma', 'type': 'continuous', 'domain': (1e-3,7e-1)}, #Too low noise gives non-PSD covariance matrix
-                   {'name': 'leghtscale', 'type': 'continuous', 'domain': (3e-2,1)}, #Theoretical l max: 4*np.sqrt(self.D)
+                   {'name': 'leghtscale', 'type': 'continuous', 'domain': (5e-2,1)}, #Theoretical l max: 4*np.sqrt(self.D)
                    {'name': 'sigma_l', 'type': 'continuous', 'domain': (1e-1,1)}] # since f is a utility function this parameter make no much sense. 
         BO = BayesianOptimization(lambda theta: -self.evidence(theta[0],self.f_MAP), #theta[0] since need to unnest list one level
                                   domain=bounds,
