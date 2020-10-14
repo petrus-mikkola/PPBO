@@ -50,7 +50,7 @@ Install python packages: <br />
 Run the jupyter notebook system <br />
 #> jupyter notebook
 
-Find the Jupyter-notebook *Camphor-Copper.ipynb*, and click it.<br />
+Find the Jupyter-notebook *camphor-copper.ipynb*, and click it.<br />
 In the notebook, click ![Screenshot_2020-05-22 Camphor-Copper - Jupyter Notebook](https://user-images.githubusercontent.com/57790862/82723533-47d17600-9cd8-11ea-9978-46f4551af440.png)!
 
 ### Instructions to run numerical experiments
