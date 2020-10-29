@@ -16,7 +16,8 @@ class PPBO_settings:
                  EI_EXR_mc_samples=170,        
                  EI_EXR_BO_maxiter=25,
                  max_iter_fMAP_estimation=5000,
-                 mustar_finding_trials=4):         
+                 mustar_finding_trials=4,
+                 kernel='SE_kernel'):         
         
         """
         BASIC SETTINGS
@@ -38,7 +39,8 @@ class PPBO_settings:
         self.fMAP_optimizer = 'trust-exact'   #scipy optimizer for f_MAP-estimation: trust-krylov or trust-exact
         self.mustar_finding_trials = mustar_finding_trials  #This depends on the noise level. #Good default values is 1.
          
-        '''HYPERPARAMETER INITIAL VALUES'''
+        '''KERNEL AND HYPERPARAMETER INITIAL VALUES'''
+        self.kernel = kernel #Kernel type as a string
         self.theta_initial = theta_initial #Intial hyperparameters. Put None if you want keep default hyper-parameters.
        
         ''' PSEUDO-OBSERVATIONS '''

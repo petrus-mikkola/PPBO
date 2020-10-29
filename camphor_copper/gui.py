@@ -35,12 +35,16 @@ class GUI_session:
         self.current_xi = None
         self.current_x = None
         self.current_xi_grid = None
-        self.user_feedback = None  #variable to store user feedback
+        self.user_feedback_preference = None  #variable to store user feedback for preference
+        self.user_feedback_confidence = None  #variable to store user feedback for confidence degree
         self.user_feedback_was_given = False  
         self.popup_configuration_movie_has_been_called = False
         self.movie = None
         
-        self.results = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
+        self.results_preference = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
+                    + ['xi' + str(i) for i in range(1,6+1)]
+                    + ['alpha_star']),dtype=np.float64)  #The output of the session is a dataframe containing user feedback
+        self.results_confidence = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
                     + ['alpha_star']),dtype=np.float64)  #The output of the session is a dataframe containing user feedback
         
@@ -78,24 +82,36 @@ class GUI_session:
         view.parameters = dict(background_color='white',camera_type='perpective',camera_fov=15)
         view._camera_orientation = [-28.583735327243016, -0.2970873285220947, 1.198387795047608, 0, -0.3455812695981218, 28.584920668432527, -1.1563751171127739, 0, -1.1853133653976955, -1.1697730312356562, -28.561879887836003, 0, -7.061999797821045, -8.524999618530273, -8.855999946594238, 1] #Default camera view
         button = widgets.Button(description='Confirm',disabled=False,button_style='')
+        slider = widgets.IntSlider(min=0, max=self.user_feedback_grid_size-1, step=1, description='Confidence: ', 
+                                   value=0,continuous_update=False, readout=True,layout=widgets.Layout(width='60%', height='80px',position='right'))
         def confirm(event):
-            typed_value = int(view.frame)
-            self.user_feedback = self.current_xi_grid[(int(typed_value)),:]
+            pref_feedback = int(view.frame)
+            conf_feedback = int(slider.value)
+            self.user_feedback_preference = self.current_xi_grid[(pref_feedback),:]
+            self.user_feedback_confidence = self.current_xi_grid[(conf_feedback),:]
             self.user_feedback_was_given = True                
         button.on_click(confirm)
-        return view,button
+        return view,button,slider
         
     def save_results(self):
-        res = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
+        res_preference = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
+                    + ['xi' + str(i) for i in range(1,6+1)]
+                    + ['alpha_star']),dtype=np.float64)
+        res_confidence = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
                     + ['alpha_star']),dtype=np.float64)    
         xi = self.current_xi
         x = self.current_x
-        alpha_xi_x = self.user_feedback
-        alpha_star = np.nanmin(alpha_xi_x[x==0]/xi[x==0])  #every component in alpha_xi_x[x==0]/xi[x==0] should be same
-        new_row = list(alpha_xi_x) + list(xi) + [alpha_star]
-        res.loc[0,:] = new_row
-        self.results=self.results.append(res, ignore_index=True)
+        alpha_xi_x_preference = self.user_feedback_preference
+        alpha_xi_x_confidence = self.user_feedback_confidence
+        alpha_star_preference = np.nanmin(alpha_xi_x_preference[x==0]/xi[x==0])  #every component in alpha_xi_x[x==0]/xi[x==0] should be same
+        alpha_star_confidence = np.nanmin(alpha_xi_x_confidence[x==0]/xi[x==0])  #every component in alpha_xi_x[x==0]/xi[x==0] should be same
+        new_row_preference = list(alpha_xi_x_preference) + list(xi) + [alpha_star_preference]
+        new_row_confidence = list(alpha_xi_x_confidence) + list(xi) + [alpha_star_confidence]
+        res_preference.loc[0,:] = new_row_preference
+        res_confidence.loc[0,:] = new_row_confidence
+        self.results_preference=self.results_preference.append(res_preference, ignore_index=True)
+        self.results_confidence=self.results_confidence.append(res_confidence, ignore_index=True)
 
     def initialize_iteration(self,x,xi):
         self.set_x(x)

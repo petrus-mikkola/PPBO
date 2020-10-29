@@ -11,6 +11,7 @@ from GPyOpt.methods import BayesianOptimization #Use as global optimizer e.g. fr
 from itertools import chain #To unlist lists of lists
 import time
 
+from kernels import SE_kernel, RQ_kernel, camphor_copper_kernel
 from misc import inverse, is_positive_definite, pd_inverse, std_normal_pdf, var2_normal_pdf, pseudo_det, det, regularize_covariance
 
 
@@ -20,7 +21,7 @@ class GPModel:
     Some methods are not inherited but composited from Feedback_Processing class
     """
     
-    COVARIANCE_SHRINKAGE = 1e-6 #An amount of shrinkage applied to Sigma
+    COVARIANCE_SHRINKAGE = 1e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 
     #Low value induces more accurate estimates but is numerically more unstable)
     #Note! Higher value increases difference to random Fourier features approximation of f
 
@@ -46,7 +47,7 @@ class GPModel:
         self.n_gausshermite_sample_points = PPBO_settings.n_gausshermite_sample_points
         self.xi_acquisition_function = PPBO_settings.xi_acquisition_function
   
-        self.kernel = self.SE_kernel #Kernel type: SE-kernel or RQ-kernel
+        self.kernel = eval(PPBO_settings.kernel) #Kernel type
         self.theta_initial = PPBO_settings.theta_initial
         self.theta = None #Most optimized theta
         self.Sigma = None
@@ -56,6 +57,7 @@ class GPModel:
          
         self.f_MAP = None
         self.max_iter_fMAP_estimation = PPBO_settings.max_iter_fMAP_estimation
+        self.fmap_finding_trials = 1
         self.fMAP_optimizer = PPBO_settings.fMAP_optimizer
         self.mustar_finding_trials = PPBO_settings.mustar_finding_trials
         self.mustar_previous_iteration = 0
@@ -112,38 +114,8 @@ class GPModel:
     def is_pseudobs(self,i):
         return self.FP.is_pseudobs(i)
     
-    ''' --- Kernels, hyper-parameters and covariance matrix --- '''
-    @staticmethod
-    def SE_kernel(X1, X2, theta):
-        l = theta[1]
-        sigma_f = theta[2]
-        if l <=0 or sigma_f <= 0:
-            print("Check hyperparameter values!")
-        """
-        Compute the Euclidean distance between each row of X1 and X2
-        """ 
-        X1sq = np.sum(np.square(X1),1)
-        X2sq = np.sum(np.square(X2),1)
-        sqdist = -2.*np.dot(X1, X2.T) + (X1sq[:,None] + X2sq[None,:])
-        sqdist = np.clip(sqdist, 0, np.inf)
-        return sigma_f**2 * np.exp(-0.5*sqdist/(l**2))  
-            
-    @staticmethod
-    def RQ_kernel(X1, X2, theta):
-        alpha = 2
-        l = theta[1]
-        sigma_f = theta[2]
-        if l <=0 or sigma_f <= 0:
-            print("Check hyperparameter values!")
-        """
-        Compute the Euclidean distance between each row of X1 and X2
-        """ 
-        X1sq = np.sum(np.square(X1),1)
-        X2sq = np.sum(np.square(X2),1)
-        sqdist = -2.*np.dot(X1, X2.T) + (X1sq[:,None] + X2sq[None,:])
-        sqdist = np.clip(sqdist, 0, np.inf)
-        return sigma_f**2 * (1+sqdist/(2*alpha*l**2))**(-alpha)
-
+    ''' --- Covariance matrix --- '''
+    
     @staticmethod
     def create_Gramian(X1,X2,kernel,*args): 
         Sigma = kernel(X1,X2, *args)
@@ -327,33 +299,39 @@ class GPModel:
 
     ''' --- Optimizations --- '''
     
-    def update_f_MAP(self,random_initialvalue=False):
+    def update_f_MAP(self,random_initialvalue=False,fmap_finding_trials=None):
         ''' Finds MAP estimate and updates it '''
-        if self.f_MAP is None:
-            f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
-        elif len(self.f_MAP) < self.N and not random_initialvalue:  #Last iteration map estimate is of course a vector of shorter length. Hence add enough constant (=mean of f_MAP) to the tail of the map estimate.
-            f_MAP = np.insert(self.f_MAP,len(self.f_MAP),[np.mean(self.f_MAP)]*(self.N-len(self.f_MAP)))
-            f_initial = f_MAP
-        elif len(self.f_MAP) == self.N and not random_initialvalue:
-            f_initial = self.f_MAP
-        else:
-            f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
-        if self.verbose: print("MAP-estimation begins...")
-        start = time.time()
+        if fmap_finding_trials is None:
+            fmap_finding_trials = self.fmap_finding_trials
         ''' Optimizer: choose second-order either trust-krylov or trust-exact, but trust-exact does not work with pypet multiprocessing! '''   
         if self.fMAP_optimizer=='trust-krylov':
             verbose = False
         else:
             verbose=self.verbose
-        res = scipy.optimize.minimize(lambda f: -self.T(f,self.theta), f_initial, method=self.fMAP_optimizer,
-                       jac=lambda f: -self.T_grad(f,self.theta), hess=lambda f: -self.T_hessian(f,self.theta),
-                       options={'disp': verbose,'maxiter': self.max_iter_fMAP_estimation})
-        if self.verbose: print('... this took ' + str(time.time()-start) + ' seconds.')
-        self.f_MAP = res.x
+        if self.verbose: print("MAP-estimation begins...")
+        start = time.time()
+        min_ = 10**24
+        for i in range(0,fmap_finding_trials): #How many times mu_star is tried to find? 
+            if self.f_MAP is None:
+                f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
+            elif len(self.f_MAP) < self.N and not random_initialvalue:  #Last iteration map estimate is of course a vector of shorter length. Hence add enough constant (=mean of f_MAP) to the tail of the map estimate.
+                f_MAP = np.insert(self.f_MAP,len(self.f_MAP),[np.mean(self.f_MAP)]*(self.N-len(self.f_MAP)))
+                f_initial = f_MAP
+            elif len(self.f_MAP) == self.N and not random_initialvalue:
+                f_initial = self.f_MAP
+            else:
+                f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
+            res = scipy.optimize.minimize(lambda f: -self.T(f,self.theta), f_initial, method=self.fMAP_optimizer,
+                           jac=lambda f: -self.T_grad(f,self.theta), hess=lambda f: -self.T_hessian(f,self.theta),
+                           options={'disp': verbose,'maxiter': self.max_iter_fMAP_estimation})
+            if self.verbose: print('... this took ' + str(time.time()-start) + ' seconds.')
+            if res.fun < min_:
+                min_ = res.fun
+                self.f_MAP = res.x
     
     def optimize_theta(self):
         ''' Optimizes all hyper-parameters (including noise) by maximizing the evidence '''
-        print("Hyperparameter optimization begins...")
+        if self.verbose: print("Hyperparameter optimization begins...")
         start = time.time()
         #BayesianOptimization
         #Higher lengthscale generates more accurate GP mean (and location of maximizer of mean)
@@ -364,7 +342,7 @@ class GPModel:
                    {'name': 'sigma_l', 'type': 'continuous', 'domain': (1e-1,1)}] # since f is a utility function this parameter make no much sense. 
         BO = BayesianOptimization(lambda theta: -self.evidence(theta[0],self.f_MAP), #theta[0] since need to unnest list one level
                                   domain=bounds,
-                                  optimize_restarts=5,
+                                  optimize_restarts=3,
                                   normalize_Y=True,
                                   initial_design_numdata=20)
         BO.run_optimization(max_iter = 50)
