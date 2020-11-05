@@ -61,8 +61,9 @@ class GPModel:
         self.fMAP_optimizer = PPBO_settings.fMAP_optimizer
         self.mustar_finding_trials = PPBO_settings.mustar_finding_trials
         self.mustar_previous_iteration = 0
-        self.mustar = None
-        self.xstar = None
+        self.mustar = None #Global maximum of (predictive mean) utility function
+        self.xstar = None #Global maximizer of (predictive mean) utility function
+        self.xstars_local = None #Local maximizers of utility function observed during the optimization
         
  
     ''' --- Wrapper functions --- '''
@@ -107,7 +108,7 @@ class GPModel:
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
         if self.verbose: print("Computing mu_star and x_star ...")
         start = time.time()
-        self.xstar, self.mustar  = self.mu_star()
+        self.xstar, self.mustar, self.xstars_local  = self.mu_star()
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
     
     ''' Auxiliary function '''
@@ -356,15 +357,23 @@ class GPModel:
             mustar_finding_trials = self.mustar_finding_trials
         #Global seach with constraints (DIFFERENTIAL EVOLUTION OPTIMIZATION)
         bounds = self.bounds
-        min_ = 10**24
         for i in range(0,mustar_finding_trials): #How many times mu_star is tried to find? 
-            res = scipy.optimize.differential_evolution(self.mu_pred_neq, bounds,updating='immediate', disp=False) 
+            res = scipy.optimize.differential_evolution(self.mu_pred_neq, bounds,updating='immediate', disp=False,maxiter=2000) 
             #print(res.x) #to monitor how stable are results
-            if res.fun < min_:
+            if i==0:
+                xstar = res.x
                 min_ = res.fun
-                x_star = res.x
-        mu_star = self.mu_pred(x_star)  
-        return x_star,mu_star
+                xstars_local = res.x
+                xstars_local.shape = (1,self.D)
+            else:
+                if all([bool(np.linalg.norm(x-res.x) > 1e-1) for x in xstars_local]):
+                    xstars_local = np.vstack([xstars_local,res.x])
+                if res.fun < min_:
+                    min_ = res.fun
+                    xstar = res.x
+        xstar.shape = (self.D,)
+        mustar = self.mu_pred(xstar)  
+        return xstar,mustar,xstars_local
 
     ''' --- GP predictions --- '''
     

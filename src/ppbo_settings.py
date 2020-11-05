@@ -16,7 +16,7 @@ class PPBO_settings:
                  EI_EXR_mc_samples=170,        
                  EI_EXR_BO_maxiter=25,
                  max_iter_fMAP_estimation=5000,
-                 mustar_finding_trials=4,
+                 mustar_finding_trials=5,
                  kernel='SE_kernel'):         
         
         """

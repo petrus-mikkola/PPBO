@@ -67,7 +67,7 @@ def next_query(PPBO_settings,GP_model,unscale=True):
 
 ''' Expected Improvement by projective preferential query (EI) '''
 def EI(xi,x,GP_model,mc_samples):
-    m = 80 
+    m = 70 
     xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='evenly',alpha_star=None,m=m,is_scaled=True)
     f_post_mean,f_post_covar = GP_model.mu_Sigma_pred(xi_grid)
     mustar = GP_model.mustar
@@ -163,7 +163,7 @@ def EId_integrate(GP_model,mc_samples):
 
 ''' Variance maximization by projective query (varmax) '''
 def varmax(xi,x,GP_model,mc_samples):
-    m = 80
+    m = 70
     xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='evenly',alpha_star=None,m=m,is_scaled=True)
     f_post_mean,f_post_covar = GP_model.mu_Sigma_pred(xi_grid)
     z = [0]*mc_samples
