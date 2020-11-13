@@ -1,4 +1,5 @@
 import os
+import shutil
 import time
 
 from oct2py import Oct2Py
@@ -48,6 +49,15 @@ class GUI_session:
                     + ['alpha_star']),dtype=np.float64)  #The output of the session is a dataframe containing user feedback
         
         self.engine = 'OCTAVE'
+        
+        ''' Prepare model files to temp '''
+        self.path_to_dsge = os.getcwd() + '/dsge'  #CHECK THAT THIS IS CORRECT
+        if os.path.exists(self.path_to_dsge + '/temp'):
+            shutil.rmtree(self.path_to_dsge + '/temp')
+        os.mkdir(self.path_to_dsge + '/temp')
+        for i in range(self.user_feedback_grid_size):
+            shutil.copy2('dsge/US_FU19_rep.mod', 'dsge/temp/US_FU19_rep_'+str(i)+'.mod')
+        shutil.copy2('dsge/prior_function_US_FU19.m', 'dsge/temp/prior_function_US_FU19.m')
 
                 
     
@@ -93,15 +103,17 @@ class GUI_session:
 #                self.eng.eval('param6'+str(conf[6])+";", nargout=0)
 #                self.eng.simulate_DSGE(nargout=0)  #simulate_DSGE is the filename of matlab-script
 #                dsge_results.append({'irf_dy_eZ': self.eng.workspace['irf_dy_eZ'],'irf_dc_eZ': self.eng.workspace['irf_dc_eZ']})
-     
+
+         
+        
         #Multi-procesessing loop for non-picklable objects
         @delayed
         @wrap_non_picklable_objects
         def func_async_wrapped(conf,i, *args):
-            path_from_root_to_files = os.getcwd() + '/dsge/'  #CHECK THAT THIS IS CORRECT
+            
             octave = Oct2Py()
             octave.addpath(r'/usr/lib/dynare/matlab')  #CHECK THAT THIS IS CORRECT
-            octave.cd(path_from_root_to_files) 
+            octave.cd(self.path_to_dsge+'/temp') 
             octave.push('param0',conf[0])
             octave.push('param1',conf[1])
             octave.push('param2',conf[2])
@@ -109,8 +121,7 @@ class GUI_session:
             octave.push('param4',conf[4])
             octave.push('param5',conf[5])
             octave.push('param6',conf[6])
-            time.sleep(i*0.35) #otherwise multiprocessing mess-up with open files
-            octave.run('simulate_DSGE.m',verbose=False)
+            octave.eval('dynare US_FU19_rep_' +str(i)+ ' noclearall',verbose=False)
             results = {'irf_dy_eZ': octave.pull('irf_dy_eZ'),'irf_dc_eZ': octave.pull('irf_dc_eZ'),
                        'irf_labobs_eZ': octave.pull('irf_labobs_eZ'),'irf_dw_eZ': octave.pull('irf_dw_eZ')}
             octave.exit()
@@ -220,9 +231,10 @@ class GUI_session:
             typed_value = int(slider.value)
             self.user_feedback = self.current_xi_grid[(int(typed_value)-1),:]
             self.user_feedback_was_given = True
-            plt.close('all')                 
+            plt.close('all')
+            
         button.on_click(confirm)
-        plt.show()    
+        plt.show(block=False)    
         return button,slider,fig, l1, l2, l3, l4
     
     def update_plot(self,l1,l2,l3,l4,fig,slider):
@@ -232,7 +244,6 @@ class GUI_session:
         update_errorbar(l3, self.x_axis_points, np.mean(self.irf(param_ind,'labobs'),axis=0), xerr=None, yerr=np.std(self.irf(0,'labobs'),axis=0)) 
         update_errorbar(l4, self.x_axis_points, np.mean(self.irf(param_ind,'dw'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dw'),axis=0)) 
         fig.canvas.draw_idle()
-        fig.set_figheight(3.9)
         
     
 def update_errorbar(errobj, x, y, xerr=None, yerr=None):

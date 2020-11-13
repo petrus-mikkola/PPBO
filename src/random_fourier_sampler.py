@@ -35,7 +35,7 @@ class Hsampler:
         self.covariance = None
         self.covariance_inv = None
         
-        self.verbose = True
+        self.verbose = False
         
         
     def generate_basis(self):

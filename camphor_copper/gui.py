@@ -29,8 +29,9 @@ class GUI_session:
         self.bounds = PPBO_settings.original_bounds #Boundaries of each variables as a sequence of tuplets
         self.alpha_grid_distribution = PPBO_settings.alpha_grid_distribution
         
-        self.user_feedback_grid_size = 100 #How many possible points in the user feedback grid?
-        self.FP = FeedbackProcessing(self.D, self.user_feedback_grid_size,self.bounds,self.alpha_grid_distribution,PPBO_settings.TGN_speed)
+        self.preference_feedback_size = 100 #How many possible points in the user feedback grid?
+        self.confidence_feedback_size = 5 #How many possible points in the user feedback grid?
+        self.FP = FeedbackProcessing(self.D, self.preference_feedback_size,self.bounds,self.alpha_grid_distribution,PPBO_settings.TGN_speed)
               
         self.current_xi = None
         self.current_x = None
@@ -44,9 +45,9 @@ class GUI_session:
         self.results_preference = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
                     + ['alpha_star']),dtype=np.float64)  #The output of the session is a dataframe containing user feedback
-        self.results_confidence = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
+        self.results_confidence = pd.DataFrame(columns=(['x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
-                    + ['alpha_star']),dtype=np.float64)  #The output of the session is a dataframe containing user feedback
+                    + ['confidence']),dtype=np.float64)  #The output of the session is a dataframe containing user feedback
         
     
     ''' Auxiliary functions '''    
@@ -57,7 +58,7 @@ class GUI_session:
     def create_xi_grid(self):
         self.current_xi_grid = self.FP.xi_grid(xi=self.current_xi,x=self.current_x,
                                                alpha_grid_distribution='evenly',
-                                               alpha_star=None,m=self.user_feedback_grid_size,
+                                               alpha_star=None,m=self.preference_feedback_size,
                                                is_scaled=False)
  
 
@@ -82,13 +83,13 @@ class GUI_session:
         view.parameters = dict(background_color='white',camera_type='perpective',camera_fov=15)
         view._camera_orientation = [-28.583735327243016, -0.2970873285220947, 1.198387795047608, 0, -0.3455812695981218, 28.584920668432527, -1.1563751171127739, 0, -1.1853133653976955, -1.1697730312356562, -28.561879887836003, 0, -7.061999797821045, -8.524999618530273, -8.855999946594238, 1] #Default camera view
         button = widgets.Button(description='Confirm',disabled=False,button_style='')
-        slider = widgets.IntSlider(min=0, max=self.user_feedback_grid_size-1, step=1, description='Confidence: ', 
+        slider = widgets.IntSlider(min=0, max=self.confidence_feedback_size-1, step=1, description='Confidence: ', 
                                    value=0,continuous_update=False, readout=True,layout=widgets.Layout(width='60%', height='80px',position='right'))
         def confirm(event):
             pref_feedback = int(view.frame)
             conf_feedback = int(slider.value)
             self.user_feedback_preference = self.current_xi_grid[(pref_feedback),:]
-            self.user_feedback_confidence = self.current_xi_grid[(conf_feedback),:]
+            self.user_feedback_confidence = conf_feedback
             self.user_feedback_was_given = True                
         button.on_click(confirm)
         return view,button,slider
@@ -97,17 +98,16 @@ class GUI_session:
         res_preference = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
                     + ['alpha_star']),dtype=np.float64)
-        res_confidence = pd.DataFrame(columns=(['alpha_xi_x' + str(i) for i in range(1,6+1)] 
+        res_confidence = pd.DataFrame(columns=(['x' + str(i) for i in range(1,6+1)] 
                     + ['xi' + str(i) for i in range(1,6+1)]
-                    + ['alpha_star']),dtype=np.float64)    
+                    + ['confidence']),dtype=np.float64)    
         xi = self.current_xi
         x = self.current_x
         alpha_xi_x_preference = self.user_feedback_preference
-        alpha_xi_x_confidence = self.user_feedback_confidence
+        confidence = self.user_feedback_confidence
         alpha_star_preference = np.nanmin(alpha_xi_x_preference[x==0]/xi[x==0])  #every component in alpha_xi_x[x==0]/xi[x==0] should be same
-        alpha_star_confidence = np.nanmin(alpha_xi_x_confidence[x==0]/xi[x==0])  #every component in alpha_xi_x[x==0]/xi[x==0] should be same
         new_row_preference = list(alpha_xi_x_preference) + list(xi) + [alpha_star_preference]
-        new_row_confidence = list(alpha_xi_x_confidence) + list(xi) + [alpha_star_confidence]
+        new_row_confidence = list(x) + list(xi) + [confidence]
         res_preference.loc[0,:] = new_row_preference
         res_confidence.loc[0,:] = new_row_confidence
         self.results_preference=self.results_preference.append(res_preference, ignore_index=True)
