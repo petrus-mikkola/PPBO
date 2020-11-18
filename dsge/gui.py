@@ -121,13 +121,13 @@ class GUI_session:
             octave.push('param4',conf[4])
             octave.push('param5',conf[5])
             octave.push('param6',conf[6])
-            octave.eval('dynare US_FU19_rep_' +str(i)+ ' noclearall',verbose=False)
+            octave.eval('dynare US_FU19_rep_' +str(i)+ ' noclearall nolog',verbose=False)
             results = {'irf_dy_eZ': octave.pull('irf_dy_eZ'),'irf_dc_eZ': octave.pull('irf_dc_eZ'),
                        'irf_labobs_eZ': octave.pull('irf_labobs_eZ'),'irf_dw_eZ': octave.pull('irf_dw_eZ')}
             octave.exit()
             del octave
             return results                      
-        self.dsge_results =Parallel(n_jobs=-1,temp_folder='tmp')(func_async_wrapped(list(self.current_xi_grid[i,:]),i) for i in range(self.current_xi_grid.shape[0]))
+        self.dsge_results =Parallel(n_jobs=-2,backend='loky',temp_folder='tmp')(func_async_wrapped(list(self.current_xi_grid[i,:]),i) for i in range(self.current_xi_grid.shape[0]))
         
         
                

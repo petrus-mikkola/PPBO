@@ -93,7 +93,7 @@ const_pi =          (cpie-1)*100;
 %-------------------------------------------
 % 3. Model
 %-------------------------------------------
-model(linear);
+model(linear,bytecode); %bytecode option provides some speed increase
 %------------------ stiky prices and wages ---------------------%
 c =         (h/gamma)/(1+h/gamma)*c(-1) + (1/(1+h/gamma))*c(+1) +((sigma_c-1)*wLc/(sigma_c*(1+h/gamma)))*(L-L(+1)) - (1-h/gamma)/(sigma_c*(1+h/gamma))*(R-pi(+1) ) +b2 ;
 i =         (1/(1+beta_bar*gamma))* (i(-1) + beta_bar*gamma*i(1)+(1/(gamma^2*inv_adj_cost))*Q ) +mu ;
@@ -182,27 +182,58 @@ stderr ems,0.2397,0.01,3,INV_GAMMA_PDF,0.1,2;
 stderr ep,0.1455,0.01,3,INV_GAMMA_PDF,0.1,2;
 stderr ew,0.2089,0.01,3,INV_GAMMA_PDF,0.1,2;
 
-%Some of hyperparameters below priors are learned:
 
-rhoZ,.9676 ,.01,.9999,BETA_PDF,param0,0.20;
-rhog,.9930,.01,.9999,BETA_PDF,param1,0.20;
 
+%OLD HYPERPARAMETER CONFIGURATIONS 
+%%Some of hyperparameters below priors are learned:
+%rhoZ,.9676 ,.01,.9999,BETA_PDF,param0,0.20;
+%rhog,.9930,.01,.9999,BETA_PDF,param1,0.20;
+%rhob2,.2703,.01,.9999,BETA_PDF,0.5,0.20;
+%rhomu,.5724,.01,.9999,BETA_PDF,0.5,0.20;
+%rhoms,.3,.01,.9999,BETA_PDF,0.5,0.20;
+%rhop,.8692,.01,.9999,BETA_PDF,0.5,0.20;
+%rhow,.9546,.001,.9999,BETA_PDF,0.5,0.20;
+%thetap,.7652,0.01,.9999,BETA_PDF,param2,0.2;
+%thetaw,.8936,0.01,.9999,BETA_PDF,param3,0.2;
+%inv_adj_cost,6.3325,2,15,NORMAL_PDF,param4,1.5;
+%sigma_c,1.2312,0.25,3,NORMAL_PDF,param5,0.375;
+%h,0.7205,0.001,0.99,BETA_PDF,param6,0.1;
+%%These maybe later....
+%zeta_w,0.7937,0.3,0.95,BETA_PDF,0.5,0.1;
+%nu_L,2.8401,0.25,10,NORMAL_PDF,2,0.75;
+%zeta_p,0.7813,0.5,0.95,BETA_PDF,0.5,0.10;
+%iota_w,0.4425,0.01,0.99,BETA_PDF,0.5,0.15;
+%iota_p,0.3291,0.01,0.99,BETA_PDF,0.5,0.15;
+%czcap,0.2648,0.01,1,BETA_PDF,0.5,0.15;
+%Phi,1.4672,1.0,3,NORMAL_PDF,1.25,0.125;
+%psi1,1.7985,1.0,3,NORMAL_PDF,1.5,0.25;
+%rhoR,0.8258,0.5,0.975,BETA_PDF,0.75,0.10;
+%psi2,0.0893,0.001,0.5,NORMAL_PDF,0.125,0.05;
+%psi3,0.2239,0.001,0.5,NORMAL_PDF,0.125,0.05;
+%const_pi,0.7,0.1,2.0,GAMMA_PDF,0.625,0.1;//20;
+%constebeta,0.7420,0.01,2.0,GAMMA_PDF,0.25,0.1;//0.20;
+%const_L,1.2918,-10.0,10.0,NORMAL_PDF,0.0,2.0;
+%ctrend,0.3982,0.1,0.8,NORMAL_PDF,0.4,0.10;
+%rhogZ,0.05,0.01,2.0,NORMAL_PDF,0.5,0.25;
+%alpha,0.24,0.01,1.0,NORMAL_PDF,0.3,0.05;
+
+
+%UPDATED (18.11.2020) HYPERPARAMETER CONFIGURATIONS 
+rhoZ,.9676 ,.01,.9999,BETA_PDF,0.5,0.20;
+rhog,.9930,.01,.9999,BETA_PDF,0.5,0.20;
 rhob2,.2703,.01,.9999,BETA_PDF,0.5,0.20;
 rhomu,.5724,.01,.9999,BETA_PDF,0.5,0.20;
 rhoms,.3,.01,.9999,BETA_PDF,0.5,0.20;
 rhop,.8692,.01,.9999,BETA_PDF,0.5,0.20;
 rhow,.9546,.001,.9999,BETA_PDF,0.5,0.20;
-
 thetap,.7652,0.01,.9999,BETA_PDF,param2,0.2;
 thetaw,.8936,0.01,.9999,BETA_PDF,param3,0.2;
 inv_adj_cost,6.3325,2,15,NORMAL_PDF,param4,1.5;
 sigma_c,1.2312,0.25,3,NORMAL_PDF,param5,0.375;
 h,0.7205,0.001,0.99,BETA_PDF,param6,0.1;
-
-%These maybe later....
-zeta_w,0.7937,0.3,0.95,BETA_PDF,0.5,0.1;
+zeta_w,0.7937,0.3,0.95,BETA_PDF,param0,0.1;
 nu_L,2.8401,0.25,10,NORMAL_PDF,2,0.75;
-zeta_p,0.7813,0.5,0.95,BETA_PDF,0.5,0.10;
+zeta_p,0.7813,0.5,0.95,BETA_PDF,param1,0.10;
 iota_w,0.4425,0.01,0.99,BETA_PDF,0.5,0.15;
 iota_p,0.3291,0.01,0.99,BETA_PDF,0.5,0.15;
 czcap,0.2648,0.01,1,BETA_PDF,0.5,0.15;
@@ -221,12 +252,11 @@ alpha,0.24,0.01,1.0,NORMAL_PDF,0.3,0.05;
 
 end;
 
-varobs dy dc dinve labobs pinfobs dw robs;
+%varobs dy dc dinve labobs pinfobs dw robs;
+varobs dy dc labobs dw;
 
-%%estimation(optim=('MaxIter',200),datafile=usmodel_data2015,mode_compute=1,first_obs=144, nobs =91, presample=4,lik_init=2,prefilter=0,mh_replic=250000,mh_nblocks=2,mh_jscale=0.20,mh_drop=0.2);
-%%estimation(optim=('MaxIter',200),datafile=usmodel_data2015,mode_compute=0, mode_file=usmodel1984_2007_mh_mode  ,first_obs=1,  presample=4,lik_init=2,prefilter=0,mh_replic=0,mh_nblocks=2,mh_jscale=0.20,mh_drop=0.2);
 %stoch_simul(irf=20,nomoments, nograph) pinfobs dy robs dc dinve labobs dw;
-stoch_simul(irf=20,nomoments, nograph) dy dc labobs dw;
+stoch_simul(irf=20,irf_shocks=(eZ),nomoments,nograph) dy dc labobs dw;
 %%shock_decomposition pinfobs dy robs dc dinve labobs dw;
 
 prior_function(function='prior_function_US_FU19');
