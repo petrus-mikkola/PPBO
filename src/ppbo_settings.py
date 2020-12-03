@@ -9,7 +9,7 @@ class PPBO_settings:
                  D,
                  bounds,
                  xi_acquisition_function,
-                 theta_initial=[0.1,0.12,0.36],
+                 theta_initial=[0.001,0.26,0.1],#[0.1,0.17,0.36]
                  user_feedback_grid_size=100,  
                  m=25,
                  verbose=True,
@@ -17,13 +17,16 @@ class PPBO_settings:
                  EI_EXR_BO_maxiter=25,
                  max_iter_fMAP_estimation=5000,
                  mustar_finding_trials=3,
-                 kernel='SE_kernel'):         
+                 kernel='SE_kernel',
+                 skip_computations_during_initialization=True, #Remember GP_model.turn_initialization_off() in PPBO-loop after final initial query!
+                 alpha_grid_distribution='equispaced'):         
         
         """
         BASIC SETTINGS
         """
         self.verbose = verbose #Wheter or not to print what is happening under the hood
         self.user_feedback_grid_size = user_feedback_grid_size
+        self.skip_computations_during_initialization=skip_computations_during_initialization
 
         """
         THE DOMAIN OF THE PROBLEM 
@@ -43,10 +46,10 @@ class PPBO_settings:
         self.theta_initial = theta_initial #Intial hyperparameters. Put None if you want keep default hyperparameters.
        
         ''' PSEUDO-OBSERVATIONS '''
-        self.n_pseudoobservations = m  #How many pseudoobservations. Note that Sigma condition number grows w.r.t. that!
-        self.alpha_grid_distribution = 'TGN'   #evenly, cauchy or TGN (truncated generalized normal distribution)
+        self.n_pseudoobservations = m  #How many pseudo-observations. Note that Sigma condition number grows w.r.t. that!
+        self.alpha_grid_distribution = alpha_grid_distribution  #How pseudo-observations are distributed?: equispaced, Cauchy or TGN (truncated generalized normal distribution). Default: equispaced
         self.TGN_speed = 0.3 #a speed of transformation from uniform dist to normal dist if TGN is selected,  0.3-0.4
-        self.n_gausshermite_sample_points = 30 #How many sample points in GaussHermite quadrature for approximating the convolution in the likelihood?
+        self.n_gausshermite_sample_points = 40 #How many sample points in GaussHermite quadrature for approximating the convolution in the likelihood?
 
         ''' ACQUISITION STRATEGY '''
         #Strategies available: [PCD,EXT,RAND,EI,EI-FIXEDX,EXR,EI-EXT,EI-EXT-FAST,EI-VARMAX,EI-VARMAX-FAST]

@@ -21,9 +21,12 @@ class GPModel:
     Some methods are not inherited but composited from Feedback_Processing class
     """
     
-    COVARIANCE_SHRINKAGE = 1e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 
-    #Low value induces more accurate estimates but is numerically more unstable)
+    COVARIANCE_SHRINKAGE = 7e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 
+    #Low value is better but is numerically more unstable
     #Note! Higher value increases difference to random Fourier features approximation of f
+    @staticmethod
+    def set_COVARIANCE_SHRINKAGE(shrinkage=7e-6):
+        COVARIANCE_SHRINKAGE=shrinkage
 
     def __init__(self, PPBO_settings):
         """
@@ -42,7 +45,7 @@ class GPModel:
         self.obs_indices = None  #Locations of true observations
         self.pseudobs_indices = None  #Locations of pseudo-observations
         self.latest_obs_indices = None  #Location of latest true observation given all observations from 0 to N
-        self.alpha_grid_distribution = PPBO_settings.alpha_grid_distribution   #evenly, cauchy or normal
+        self.alpha_grid_distribution = PPBO_settings.alpha_grid_distribution   #equispaced, Cauchy or TGN
         self.TGN_speed = PPBO_settings.TGN_speed
         self.n_gausshermite_sample_points = PPBO_settings.n_gausshermite_sample_points
         self.xi_acquisition_function = PPBO_settings.xi_acquisition_function
@@ -55,15 +58,20 @@ class GPModel:
         self.Lambda_MAP = None
         self.posterior_covariance = None
          
-        self.f_MAP = None
+        self.fMAP = None
         self.max_iter_fMAP_estimation = PPBO_settings.max_iter_fMAP_estimation
-        self.fmap_finding_trials = 1
+        self.fMAP_finding_trials = 1
         self.fMAP_optimizer = PPBO_settings.fMAP_optimizer
+        self.fMAP_random_initial_vector = True
         self.mustar_finding_trials = PPBO_settings.mustar_finding_trials
         self.mustar_previous_iteration = 0
         self.mustar = None #Global maximum of (predictive mean) utility function
         self.xstar = None #Global maximizer of (predictive mean) utility function
         self.xstars_local = None #Local maximizers of utility function observed during the optimization
+        
+        self.initialization_running = True #Less intensive computations during initialization (if skip_... = True)
+        self.last_iteration = False #Super intensive computations at the last iteration
+        self.skip_computations_during_initialization = PPBO_settings.skip_computations_during_initialization
         
  
     ''' --- Wrapper functions --- '''
@@ -86,16 +94,22 @@ class GPModel:
             self.set_theta() 
         self.update_Sigma(self.theta)
         self.update_Sigma_inv(self.theta)
-        self.update_f_MAP(random_initialvalue=True)
+        if self.initialization_running and self.skip_computations_during_initialization:
+            self.FP.alpha_grid_distribution = 'equispaced' #Always use 'equispaced' pseudo-observations in initialization
+            self.update_fMAP(random_initial_vector=False,fmap_finding_trials=1)
+        elif self.last_iteration:
+            self.update_fMAP(random_initial_vector=True,fmap_finding_trials=5)
+        else:
+            self.update_fMAP()
         if optimize_theta:
             self.optimize_theta()
-            self.update_f_MAP(random_initialvalue=True) #is random_initialvalue necessary?
+            self.update_fMAP()
             self.update_Sigma(self.theta)
             self.update_Sigma_inv(self.theta)
         if self.verbose: print("Current theta is: " + str(self.theta) + ' (Acq. = ' +str(self.xi_acquisition_function)+')')
         if self.verbose: print("Updating Lambda_MAP...")
         start = time.time()
-        self.Lambda_MAP = self.create_Lambda(self.f_MAP,self.theta[0])
+        self.Lambda_MAP = self.create_Lambda(self.fMAP,self.theta[0])
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
         if self.verbose: print("Updating posterior covariance...")
         start = time.time()
@@ -108,10 +122,22 @@ class GPModel:
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
         if self.verbose: print("Computing mu_star and x_star ...")
         start = time.time()
-        self.xstar, self.mustar, self.xstars_local  = self.mu_star()
+        if self.initialization_running and self.skip_computations_during_initialization:
+            self.xstar, self.mustar, self.xstars_local = self.mu_star(mustar_finding_trials=1)
+        elif self.last_iteration:
+            self.xstar, self.mustar, self.xstars_local = self.mu_star(mustar_finding_trials=5)    
+        else:
+            self.xstar, self.mustar, self.xstars_local  = self.mu_star()
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
     
     ''' Auxiliary function '''
+    def turn_initialization_off(self):
+        self.initialization_running = False
+        self.FP.alpha_grid_distribution = self.alpha_grid_distribution
+        
+    def set_last_iteration(self):
+        self.last_iteration = True
+    
     def is_pseudobs(self,i):
         return self.FP.is_pseudobs(i)
     
@@ -211,14 +237,14 @@ class GPModel:
         sum_Phi_der_vec_ = self.sum_Phi_vec(1,f,theta[0])
         beta[self.obs_indices] = sum_Phi_der_vec_/(theta[0]*m)
         beta[self.pseudobs_indices] = -Phi_der_vec_/(theta[0]*m)
-        T_grad = -Sigma_inv_.dot(f).reshape(N,) + beta.reshape(N,)      
+        T_grad = -Sigma_inv_.dot(f).reshape(N,) + beta.reshape(N,)
         return T_grad
     
     def T_hessian(self,f,theta,Sigma_inv_=None):
         if Sigma_inv_ is None: 
             Sigma_inv_=self.Sigma_inv
         Lambda = self.create_Lambda(f,theta[0])
-        T_hessian = -Sigma_inv_ + Lambda 
+        T_hessian = -Sigma_inv_ + Lambda
         return T_hessian
 
     def create_Lambda(self,f,sigma): 
@@ -254,26 +280,26 @@ class GPModel:
         def prior(theta):
             ''' Hyperparameter priors. This stabilizes the optimization '''
             #https://keisan.casio.com/exec/system/1180573226
-            priortheta0 = scipy.stats.beta.pdf(theta[0], 2, 12) #loc around 0.1
-            priortheta1 = scipy.stats.beta.pdf(theta[1], 10, 35) #loc around 0.2
-            priortheta2 = scipy.stats.beta.pdf(theta[2], 2, 2) #loc around 0.5
+            priortheta0 = scipy.stats.beta.pdf(theta[0], 0.0005, 35) #loc around 0
+            priortheta1 = scipy.stats.beta.pdf(theta[1], 15, 35) #loc around 0.3
+            priortheta2 = scipy.stats.beta.pdf(theta[2], 3, 20) #loc around 0.1
             return np.log(priortheta0)+np.log(priortheta1)+np.log(priortheta2)
         if self.verbose: print('---------- Iter results ----------------')
         Sigma_ = self.create_Gramian(self.X,self.X,self.kernel,theta)
         Sigma_inv_ = pd_inverse(Sigma_)
         f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
-        f_MAP_ = scipy.optimize.minimize(lambda f: -self.T(f,theta,Sigma_inv_), f_initial, method='trust-exact',
+        fMAP = scipy.optimize.minimize(lambda f: -self.T(f,theta,Sigma_inv_), f_initial, method='trust-exact',
                        jac=lambda f: -self.T_grad(f,theta,Sigma_inv_), hess=lambda f: -self.T_hessian(f,theta,Sigma_inv_),
                        options={'disp': False,'maxiter': 500}).x
-        Lambda_MAP = self.create_Lambda(f_MAP_,theta[0])
+        Lambda_MAP = self.create_Lambda(fMAP,theta[0])
     
         ''' A straightforward (numerically unstable?) implementation '''
         I = np.eye(self.N)
         matrix = I+Sigma_.dot(Lambda_MAP) 
         (sign, logdet) = np.linalg.slogdet(matrix)
         determinant = sign*np.exp(logdet)
-        #evidence = np.exp(self.T(f_MAP_,theta,Sigma_inv_))*np.power(determinant,-0.5)
-        log_evidence = self.T(f_MAP_,theta,Sigma_inv_) - 0.5*np.log(determinant) 
+        #evidence = np.exp(self.T(fMAP,theta,Sigma_inv_))*np.power(determinant,-0.5)
+        log_evidence = self.T(fMAP,theta,Sigma_inv_) - 0.5*np.log(determinant) 
         if self.verbose: print('(scaled) Log-evidence: ' + str(log_evidence))
         if self.verbose: print('Hyper-parameters: ' + str(theta))
         value = log_evidence + prior(theta)
@@ -290,7 +316,7 @@ class GPModel:
         #    posterior_covariance = pd_inverse(posterior_covariance_inv)
         #    L = np.linalg.cholesky(posterior_covariance)
         #    log_determinant = 2*np.sum(np.log(np.diag(L)))
-        #    log_evidence = self.T(f_MAP_,theta,Sigma_inv_) - 0.5*log_determinant  #determinant still too large, so resulting theta gives too regularized GP
+        #    log_evidence = self.T(fMAP,theta,Sigma_inv_) - 0.5*log_determinant  #determinant still too large, so resulting theta gives too regularized GP
         #    print("Log-determinant: " + str(log_determinant))
         #    print('Hyper-parameters: ' + str(theta))
         #    return log_evidence
@@ -300,10 +326,12 @@ class GPModel:
 
     ''' --- Optimizations --- '''
     
-    def update_f_MAP(self,random_initialvalue=False,fmap_finding_trials=None):
+    def update_fMAP(self,random_initial_vector=None,fmap_finding_trials=None):
         ''' Finds MAP estimate and updates it '''
         if fmap_finding_trials is None:
-            fmap_finding_trials = self.fmap_finding_trials
+            fmap_finding_trials = self.fMAP_finding_trials  
+        if random_initial_vector is None:
+            random_initial_vector = self.fMAP_random_initial_vector
         ''' Optimizer: choose second-order either trust-krylov or trust-exact, but trust-exact does not work with pypet multiprocessing! '''   
         if self.fMAP_optimizer=='trust-krylov':
             verbose = False
@@ -313,13 +341,13 @@ class GPModel:
         start = time.time()
         min_ = 10**24
         for i in range(0,fmap_finding_trials): #How many times mu_star is tried to find? 
-            if self.f_MAP is None:
+            if self.fMAP is None:
                 f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
-            elif len(self.f_MAP) < self.N and not random_initialvalue:  #Last iteration map estimate is of course a vector of shorter length. Hence add enough constant (=mean of f_MAP) to the tail of the map estimate.
-                f_MAP = np.insert(self.f_MAP,len(self.f_MAP),[np.mean(self.f_MAP)]*(self.N-len(self.f_MAP)))
-                f_initial = f_MAP
-            elif len(self.f_MAP) == self.N and not random_initialvalue:
-                f_initial = self.f_MAP
+            elif len(self.fMAP) < self.N and not random_initial_vector:  #Last iteration map estimate is of course a vector of shorter length. Hence add enough constant (=mean of fMAP) to the tail of the map estimate.
+                fMAP = np.insert(self.fMAP,len(self.fMAP),[np.mean(self.fMAP)]*(self.N-len(self.fMAP)))
+                f_initial = fMAP
+            elif len(self.fMAP) == self.N and not random_initial_vector:
+                f_initial = self.fMAP
             else:
                 f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
             res = scipy.optimize.minimize(lambda f: -self.T(f,self.theta), f_initial, method=self.fMAP_optimizer,
@@ -328,7 +356,8 @@ class GPModel:
             if self.verbose: print('... this took ' + str(time.time()-start) + ' seconds.')
             if res.fun < min_:
                 min_ = res.fun
-                self.f_MAP = res.x
+                bestfMAP = res.x
+        self.fMAP = bestfMAP
     
     def optimize_theta(self):
         ''' Optimizes all hyper-parameters (including noise) by maximizing the evidence '''
@@ -338,10 +367,10 @@ class GPModel:
         #Higher lengthscale generates more accurate GP mean (and location of maximizer of mean)
         #However, higher lengthscale also generates less accurate argmax distribution (argmax samples are widepread)   
         ''' Bounds for hyperparameters: When COVARIANCE_SHRINKAGE = 1e-6'''
-        bounds = [{'name': 'sigma', 'type': 'continuous', 'domain': (1e-3,7e-1)}, #Too low noise gives non-PSD covariance matrix
-                   {'name': 'leghtscale', 'type': 'continuous', 'domain': (5e-2,1)}, #Theoretical l max: 4*np.sqrt(self.D)
-                   {'name': 'sigma_l', 'type': 'continuous', 'domain': (1e-1,1)}] # since f is a utility function this parameter make no much sense. 
-        BO = BayesianOptimization(lambda theta: -self.evidence(theta[0],self.f_MAP), #theta[0] since need to unnest list one level
+        bounds = [{'name': 'sigma', 'type': 'continuous', 'domain': (0.0001,0.1)}, #Too low noise gives non-PSD covariance matrix
+                   {'name': 'leghtscale', 'type': 'continuous', 'domain': (0.05,0.9)}, #Theoretical l max: 4*np.sqrt(self.D)
+                   {'name': 'sigma_l', 'type': 'continuous', 'domain': (0.01,0.5)}] # since f is a utility function this parameter make no much sense. 
+        BO = BayesianOptimization(lambda theta: -self.evidence(theta[0],self.fMAP), #theta[0] since need to unnest list one level
                                   domain=bounds,
                                   optimize_restarts=3,
                                   normalize_Y=True,
@@ -381,7 +410,7 @@ class GPModel:
         ''' Predictive posterior means and covariances '''
         #mean
         k_pred = self.create_Gramian_nonsquare(self.X,X_pred,self.kernel,self.theta)
-        mu_pred = k_pred.T.dot(self.Sigma_inv).dot(self.f_MAP)
+        mu_pred = k_pred.T.dot(self.Sigma_inv).dot(self.fMAP)
         #covariance
         Sigma_testloc = self.create_Gramian(X_pred,X_pred,self.kernel,self.theta)            
         '''Alternative formula that exploits posterior covariance (this seems to work) '''
@@ -393,7 +422,7 @@ class GPModel:
     def mu_pred(self,X_pred):
         ''' Predict posterior mean for SINGLE vector: needed for optimizers '''
         k_pred = self.create_Gramian_nonsquare(self.X,X_pred.reshape(1,self.D),self.kernel,self.theta)
-        mu_pred = k_pred.T.dot(self.Sigma_inv).dot(self.f_MAP)
+        mu_pred = k_pred.T.dot(self.Sigma_inv).dot(self.fMAP)
         return float(mu_pred)
     
     def mu_pred_neq(self,X_pred):   

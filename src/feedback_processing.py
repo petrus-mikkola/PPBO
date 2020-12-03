@@ -63,7 +63,7 @@ class FeedbackProcessing:
             alpha_min,alpha_max = alpha_bounds(xi,lower,upper)
         
   
-        if alpha_grid_distribution=='evenly':
+        if alpha_grid_distribution=='equispaced':
             noise_level_gridpoints = 0.01 #Add random noise to grid points to avoid singluraity issues in datamatrix. Numbers present noise variance as a percentage of the length of the interval of variable bounds: 0.01 is good starting point
             epsilon_boundary = (alpha_max-alpha_min)*(noise_level_gridpoints/2)  #Number away from the boundary
             epsilon_noise = np.abs(alpha_max-alpha_min)*noise_level_gridpoints #Level of noise depends on noise level parameter and length of the interval of var bounds
@@ -72,7 +72,7 @@ class FeedbackProcessing:
                 alpha = np.linspace(alpha_min+epsilon_boundary, alpha_max-epsilon_boundary, num=m) + np.random.normal(0, epsilon_noise, m)
                 alpha = np.clip(alpha, alpha_min, alpha_max)
                 alpha = np.unique(alpha) #delete duplicates   
-        elif alpha_grid_distribution=='cauchy':
+        elif alpha_grid_distribution=='Cauchy':
             ''' Gridpoints are drawn from Cauchy-dsitribution with location alpha_star '''
             alpha = []
             while len(alpha) != m:
@@ -91,6 +91,8 @@ class FeedbackProcessing:
                 alpha = TGN_sample(size=m,gamma=gamma,alpha=float(alpha_star),x_min=alpha_min,x_max=alpha_max)
                 alpha = np.clip(alpha, alpha_min, alpha_max)
                 alpha = np.unique(alpha) #delete duplicates 
+        else:
+            print('Uknown alpha-distribution: ' + str(alpha_grid_distribution))
         
         alpha.shape = (m,1)
         xi = np.array(xi).reshape(1,self.D)

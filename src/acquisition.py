@@ -68,7 +68,7 @@ def next_query(PPBO_settings,GP_model,unscale=True):
 ''' Expected Improvement by projective preferential query (EI) '''
 def EI(xi,x,GP_model,mc_samples):
     m = 70 
-    xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='evenly',alpha_star=None,m=m,is_scaled=True)
+    xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='equispaced',alpha_star=None,m=m,is_scaled=True)
     f_post_mean,f_post_covar = GP_model.mu_Sigma_pred(xi_grid)
     mustar = GP_model.mustar
     z = [0]*mc_samples
@@ -127,6 +127,7 @@ def maximize_EI_fixed_x(xi_dims,GP_model,PPBO_settings):
     x = perturbate_zerocoordinates(x,x_dims)
     return xi, x
 def EId_xstar(GP_model,mc_samples):
+    ''' Returns the dimension that maximizes EI given x=xstar '''
     xstar = GP_model.xstar.copy()
     EIvals = [0]*GP_model.D
     xis = np.eye(GP_model.D)
@@ -140,6 +141,7 @@ def EId_xstar(GP_model,mc_samples):
     xstar[dstar] = 0
     return xistar
 def EId_integrate(GP_model,mc_samples):
+    ''' Returns the dimension that maximizes EI given x is integrated out '''
     mc_samples2 = 50
     EIvals = [0]*GP_model.D
     xis = np.eye(GP_model.D)
@@ -164,7 +166,7 @@ def EId_integrate(GP_model,mc_samples):
 ''' Variance maximization by projective query (varmax) '''
 def varmax(xi,x,GP_model,mc_samples):
     m = 70
-    xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='evenly',alpha_star=None,m=m,is_scaled=True)
+    xi_grid = GP_model.FP.xi_grid(xi=xi,x=x,alpha_grid_distribution='equispaced',alpha_star=None,m=m,is_scaled=True)
     f_post_mean,f_post_covar = GP_model.mu_Sigma_pred(xi_grid)
     z = [0]*mc_samples
     for i in range(0,mc_samples):

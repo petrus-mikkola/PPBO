@@ -34,6 +34,8 @@ def RQ_kernel(X1,X2,theta):
     return sigma_f**2 * (1+sqdist/(2*alpha*l**2))**(-alpha)
 
 def camphor_copper_kernel(X1,X2,theta):
+    #This hyperparameter vector will work well:  theta=[0.001,0.26,0.1] (given that 0.05 added to lengthscale of RBF for z-variable)
+    #OLD hyperparameters that stood out in testing: theta=[0.09,0.2,0.35]
     l = theta[1]
     sigma_f = theta[2]
     if l <=0 or sigma_f <= 0:
@@ -43,7 +45,8 @@ def camphor_copper_kernel(X1,X2,theta):
     p = 1
     kernelX = np.exp((-2*np.square(np.sin(np.pi*d(X1[:,0],X2[:,0])/p)))/l**2)
     kernelY = np.exp((-2*np.square(np.sin(np.pi*d(X1[:,1],X2[:,1])/p)))/l**2)
-    kernelZ = np.exp(-0.5*np.square(d(X1[:,2],X2[:,2]))/(l**2))
+    kernelZ = np.exp(-0.5*np.square(d(X1[:,2],X2[:,2]))/((l+0.05)**2)) 
+    ''' NOTE: 0.05 added to lengthscale of RBF for z-variable'''
     kernelalpha = np.exp((-2*np.square(np.sin(np.pi*d(X1[:,3],X2[:,3])/p)))/l**2)
     kernelbeta = np.exp((-2*np.square(np.sin(np.pi*d(X1[:,4],X2[:,4])/p)))/l**2)
     kernelgamma = np.exp((-2*np.square(np.sin(np.pi*d(X1[:,5],X2[:,5])/p)))/l**2)

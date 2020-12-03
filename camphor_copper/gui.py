@@ -57,7 +57,7 @@ class GUI_session:
         self.current_x = x
     def create_xi_grid(self):
         self.current_xi_grid = self.FP.xi_grid(xi=self.current_xi,x=self.current_x,
-                                               alpha_grid_distribution='evenly',
+                                               alpha_grid_distribution='equispaced',
                                                alpha_star=None,m=self.preference_feedback_size,
                                                is_scaled=False)
  

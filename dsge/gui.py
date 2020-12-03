@@ -68,7 +68,7 @@ class GUI_session:
         self.current_x = x
     def create_xi_grid(self):
         self.current_xi_grid = self.FP.xi_grid(xi=self.current_xi,x=self.current_x,
-                                               alpha_grid_distribution='evenly',
+                                               alpha_grid_distribution='equispaced',
                                                alpha_star=None,m=self.user_feedback_grid_size,
                                                is_scaled=False)
  
@@ -198,9 +198,9 @@ class GUI_session:
         fig = plt.figure()
         fig.set_figheight(3.9)
         ax1 = fig.add_subplot(221)
-        ax2 = fig.add_subplot(222, sharex=ax1, sharey=ax1)
-        ax3 = fig.add_subplot(223, sharex=ax1, sharey=ax1)
-        ax4 = fig.add_subplot(224, sharex=ax1, sharey=ax1)
+        ax2 = fig.add_subplot(222, sharex=ax1)
+        ax3 = fig.add_subplot(223, sharex=ax1)
+        ax4 = fig.add_subplot(224, sharex=ax1)
         fig.suptitle('IRFs to an shock to TFP', fontsize=12, fontweight='bold')
         plt.subplots_adjust(left=0.07, bottom=0.19, hspace=0.42)
         self.x_axis_points = list(range(1,self.n_irfs_periods+1))
@@ -214,14 +214,28 @@ class GUI_session:
         ax2.axhline(y=0, color='k', linestyle='dashed')
         ax3.axhline(y=0, color='k', linestyle='dashed')
         ax4.axhline(y=0, color='k', linestyle='dashed')
-        ax1.set_ylim([-0.1, 0.12])
         #fig.text(0.1, 0.01, "$\it{Please\ select\ the\ most\ realistic\ hyperparameter\ configuration. }$")
         
         
-        l1 = ax1.errorbar(self.x_axis_points, np.mean(self.irf(0,'dy'),axis=0), np.std(self.irf(0,'dy'),axis=0), elinewidth=0.7, label='IRF_dy') 
-        l2 = ax2.errorbar(self.x_axis_points, np.mean(self.irf(0,'dc'),axis=0), np.std(self.irf(0,'dc'),axis=0), elinewidth=0.7, label='IRF_dc')
-        l3 = ax3.errorbar(self.x_axis_points, np.mean(self.irf(0,'labobs'),axis=0), np.std(self.irf(0,'labobs'),axis=0), elinewidth=0.7, label='IRF_labobs') 
-        l4 = ax4.errorbar(self.x_axis_points, np.mean(self.irf(0,'dw'),axis=0), np.std(self.irf(0,'dw'),axis=0), elinewidth=0.7, label='IRF_dw')
+        #l1 = ax1.errorbar(self.x_axis_points, np.mean(self.irf(0,'dy'),axis=0), np.std(self.irf(0,'dy'),axis=0), elinewidth=0.7, label='IRF_dy') 
+        #l2 = ax2.errorbar(self.x_axis_points, np.mean(self.irf(0,'dc'),axis=0), np.std(self.irf(0,'dc'),axis=0), elinewidth=0.7, label='IRF_dc')
+        #l3 = ax3.errorbar(self.x_axis_points, np.mean(self.irf(0,'labobs'),axis=0), np.std(self.irf(0,'labobs'),axis=0), elinewidth=0.7, label='IRF_labobs') 
+        #l4 = ax4.errorbar(self.x_axis_points, np.mean(self.irf(0,'dw'),axis=0), np.std(self.irf(0,'dw'),axis=0), elinewidth=0.7, label='IRF_dw')
+        
+        ax1.set_ylim([-0.2+0.1, 0.6+0.1])
+        ax2.set_ylim([-0.1+0.1, 0.3+0.1])
+        ax3.set_ylim([-0.3+0.1, 0.1+0.1])
+        ax4.set_ylim([-0.05+0.1, 0.15+0.1])
+        ax1.set_yticks([-0.2,0,0.2,0.4,0.6])
+        ax2.set_yticks([-0.1,0,0.1,0.2,0.3])
+        ax3.set_yticks([-0.3,0.2,-0.1,0,0.1])
+        ax4.set_yticks([-0.05,0,0.05,0.1,0.15])
+        
+        l1, = ax1.plot(self.x_axis_points, np.mean(self.irf(0,'dy'),axis=0), lw=2)
+        l2, = ax2.plot(self.x_axis_points, np.mean(self.irf(0,'dc'),axis=0), lw=2)
+        l3, = ax3.plot(self.x_axis_points, np.mean(self.irf(0,'labobs'),axis=0), lw=2)
+        l4, = ax4.plot(self.x_axis_points, np.mean(self.irf(0,'dw'),axis=0), lw=2)
+        
         plt.draw()
         slider = widgets.IntSlider(min=1, max=self.user_feedback_grid_size, step=1, description='Slider: ', 
                                    value=1,continuous_update=False, readout=False,
@@ -235,14 +249,18 @@ class GUI_session:
             
         button.on_click(confirm)
         plt.show(block=False)    
-        return button,slider,fig, l1, l2, l3, l4
+        return button,slider,fig,l1,l2,l3,l4
     
     def update_plot(self,l1,l2,l3,l4,fig,slider):
         param_ind = int(slider.value-1)
-        update_errorbar(l1, self.x_axis_points, np.mean(self.irf(param_ind,'dy'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dy'),axis=0)) 
-        update_errorbar(l2, self.x_axis_points, np.mean(self.irf(param_ind,'dc'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dc'),axis=0))
-        update_errorbar(l3, self.x_axis_points, np.mean(self.irf(param_ind,'labobs'),axis=0), xerr=None, yerr=np.std(self.irf(0,'labobs'),axis=0)) 
-        update_errorbar(l4, self.x_axis_points, np.mean(self.irf(param_ind,'dw'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dw'),axis=0)) 
+        #update_errorbar(l1, self.x_axis_points, np.mean(self.irf(param_ind,'dy'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dy'),axis=0)) 
+        #update_errorbar(l2, self.x_axis_points, np.mean(self.irf(param_ind,'dc'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dc'),axis=0))
+        #update_errorbar(l3, self.x_axis_points, np.mean(self.irf(param_ind,'labobs'),axis=0), xerr=None, yerr=np.std(self.irf(0,'labobs'),axis=0)) 
+        #update_errorbar(l4, self.x_axis_points, np.mean(self.irf(param_ind,'dw'),axis=0), xerr=None, yerr=np.std(self.irf(0,'dw'),axis=0))
+        l1.set_ydata(np.mean(self.irf(param_ind,'dy'),axis=0))
+        l2.set_ydata(np.mean(self.irf(param_ind,'dc'),axis=0))
+        l3.set_ydata(np.mean(self.irf(param_ind,'labobs'),axis=0))
+        l4.set_ydata(np.mean(self.irf(param_ind,'dw'),axis=0))
         fig.canvas.draw_idle()
         
     

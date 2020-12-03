@@ -98,10 +98,13 @@ def run_ppbo_loop(objective,initial_queries_xi,initial_queries_x,number_of_actua
         GP_model.update_model(optimize_theta=OPTIMIZE_HYPERPARAMETERS_AFTER_INITIALIZATION)  
     
     print('Initialization done! (Acq.' +str(PPBO_settings.xi_acquisition_function)+' )')
+    GP_model.turn_initialization_off()
     
     ''' Queries -loop '''
     for i in range(number_of_actual_queries):
         print("Starting query " + str(i+1)+"/"+str(number_of_actual_queries)+" ...")
+        if i+1==len(initial_queries_xi)+number_of_actual_queries:
+            GP_model.set_last_iteration()
         
         ''' Compute next query '''
         xi_next,x_next = next_query(PPBO_settings,GP_model,unscale=True)
@@ -135,7 +138,7 @@ def run_ppbo_loop(objective,initial_queries_xi,initial_queries_x,number_of_actua
 def six_hump_camel(traj):
     PPBO_settings_ = PPBO_settings(D=2,bounds=((-3,3),(-2,2)),
                                    xi_acquisition_function=traj.xi_acquisition_function,m=traj.m,
-                                   theta_initial=[0.092,0.124,0.356]) 
+                                   theta_initial=[0.001,0.2,0.1],alpha_grid_distribution='TGN') #[0.092,0.124,0.356]
     initial_queries_xi = np.diag([PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)])
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
@@ -149,7 +152,7 @@ def levy(traj):
     D = 10
     PPBO_settings_ = PPBO_settings(D=D,bounds=((-10,10),)*D,
                                    xi_acquisition_function=traj.xi_acquisition_function,m=traj.m,
-                                   theta_initial=[0.09,0.3,0.5])
+                                   theta_initial=[0.001,0.4,0.15],alpha_grid_distribution='TGN') #[0.09,0.3,0.5]
     initial_queries_xi = np.diag([PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)])
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
@@ -162,7 +165,7 @@ def ackley(traj):
     D = 20
     PPBO_settings_ = PPBO_settings(D=D,bounds=((-32.768, 32.768),)*D,
                                       xi_acquisition_function=traj.xi_acquisition_function,m=traj.m,
-                                      theta_initial=[0.09,0.3,0.5]) 
+                                      theta_initial=[0.001,0.45,0.15],alpha_grid_distribution='TGN') #[0.09,0.3,0.5]
     initial_queries_xi = np.diag([PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)])
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
@@ -174,7 +177,7 @@ def ackley(traj):
 def hartmann6d(traj):
     PPBO_settings_ = PPBO_settings(D=6,bounds=((0, 1),)*6,
                                    xi_acquisition_function=traj.xi_acquisition_function,m=traj.m,
-                                   theta_initial=[0.09,0.3,0.5])
+                                   theta_initial=[0.001,0.26,0.1],alpha_grid_distribution='TGN') #[0.09,0.3,0.5]
     initial_queries_xi = np.eye(PPBO_settings_.D)
     np.random.seed(traj.initialization_seed) 
     initial_queries_x = np.random.uniform([PPBO_settings_.original_bounds[i][0] for i in range(PPBO_settings_.D)], [PPBO_settings_.original_bounds[i][1] for i in range(PPBO_settings_.D)], (len(initial_queries_xi), PPBO_settings_.D))
@@ -223,9 +226,9 @@ traj.f_explore(run_settings)
 
 ''' Run experiment '''
 start = time.time()
-env.run(six_hump_camel)
+#env.run(six_hump_camel)
 #env.run(levy)
-#env.run(hartmann6d)
+env.run(hartmann6d)
 #env.run(ackley)
 
 
@@ -237,16 +240,6 @@ if should_log:
     sys.stdout = orig_stdout
     log_file.close()
 ''' ---------------'''
-
-
-
-
-
-
-
-
-
-
 
 
 
