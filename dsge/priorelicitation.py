@@ -63,7 +63,7 @@ def minimize_KL(q,g,prior):
     if prior.family=='beta':
         bounds = [{'name': 'location', 'type': 'continuous', 'domain': (0.01, 10)}]
     BO = BayesianOptimization(lambda hyperparam: KL_divergence(q(thetas, hyperparam, prior.fixed_hyperparams[0]),g),
-                              domain=bounds,optimize_restarts = 1,normalize_Y=True)
+                              domain=bounds,optimize_restarts=1,normalize_Y=True)
     BO.run_optimization(max_iter = 100)
     opt_hyperparam = BO.x_opt[0]
     return opt_hyperparam
@@ -92,8 +92,8 @@ def sample_h(GP_model,sample_size,ignore_noise_factor=1,n_input_points=1000):
 
 def plot(q,g,thetas,fig_id,legends=False,title=False):
     plt.figure(fig_id)
-    plt.plot(thetas, q, c='blue')
-    plt.plot(thetas, g, c='red')
+    plt.plot(thetas, q, c='blue', linewidth=3)
+    plt.plot(thetas, g, c='red', linewidth=3)
     if title:
         plt.title('KL($\~g||g$) = %1.3f' % KL_divergence(q, g), fontsize=20)
     if legends:

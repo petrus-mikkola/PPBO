@@ -21,17 +21,16 @@ class GPModel:
     Some methods are not inherited but composited from Feedback_Processing class
     """
     
-    COVARIANCE_SHRINKAGE = 7e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 
-    #Low value is better but is numerically more unstable
-    #Note! Higher value increases difference to random Fourier features approximation of f
-    @staticmethod
-    def set_COVARIANCE_SHRINKAGE(shrinkage=7e-6):
-        COVARIANCE_SHRINKAGE=shrinkage
 
     def __init__(self, PPBO_settings):
         """
         Initializes the GP_Model object
         """
+        
+        self.COVARIANCE_SHRINKAGE = 7e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 (1e-5 - 1e-6) 
+        #Low value is better but is numerically more unstable
+        #Note! Higher value increases difference to random Fourier features approximation of f     
+            
         self.verbose = PPBO_settings.verbose
         self.FP = None
         
@@ -59,7 +58,6 @@ class GPModel:
         self.posterior_covariance = None
          
         self.fMAP = None
-        self.max_iter_fMAP_estimation = PPBO_settings.max_iter_fMAP_estimation
         self.fMAP_finding_trials = 1
         self.fMAP_optimizer = PPBO_settings.fMAP_optimizer
         self.fMAP_random_initial_vector = True
@@ -72,6 +70,7 @@ class GPModel:
         self.initialization_running = True #Less intensive computations during initialization (if skip_... = True)
         self.last_iteration = False #Super intensive computations at the last iteration
         self.skip_computations_during_initialization = PPBO_settings.skip_computations_during_initialization
+        self.skip_xstaroptimization_during_initialization = PPBO_settings.skip_xstaroptimization_during_initialization
         
  
     ''' --- Wrapper functions --- '''
@@ -90,13 +89,14 @@ class GPModel:
         self.latest_obs_indices = self.FP.latest_obs_indices
     
     def update_model(self,optimize_theta=False):
+        ''' Note: Optimize_theta is still quite unstable, thus it's not recommended '''
         if self.theta is None:
             self.set_theta() 
         self.update_Sigma(self.theta)
         self.update_Sigma_inv(self.theta)
         if self.initialization_running and self.skip_computations_during_initialization:
             self.FP.alpha_grid_distribution = 'equispaced' #Always use 'equispaced' pseudo-observations in initialization
-            self.update_fMAP(random_initial_vector=False,fmap_finding_trials=1)
+            self.update_fMAP(random_initial_vector=False,fmap_finding_trials=1,approx_optimization=True)
         elif self.last_iteration:
             self.update_fMAP(random_initial_vector=True,fmap_finding_trials=5)
         else:
@@ -107,23 +107,28 @@ class GPModel:
             self.update_Sigma(self.theta)
             self.update_Sigma_inv(self.theta)
         if self.verbose: print("Current theta is: " + str(self.theta) + ' (Acq. = ' +str(self.xi_acquisition_function)+')')
-        if self.verbose: print("Updating Lambda_MAP...")
-        start = time.time()
-        self.Lambda_MAP = self.create_Lambda(self.fMAP,self.theta[0])
-        if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
-        if self.verbose: print("Updating posterior covariance...")
-        start = time.time()
-        try:
-            self.posterior_covariance_inv = self.Sigma_inv - self.Lambda_MAP #self.Sigma_inv + self.Lambda_MAP
-            self.posterior_covariance = pd_inverse(self.posterior_covariance_inv)
-        except:
-            print('---!!!--- Posterior covariance matrix is not PSD ---!!!---')
+        if self.initialization_running and self.skip_computations_during_initialization:
             pass
-        if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
+        else:
+            if self.verbose: print("Updating Lambda_MAP...")
+            start = time.time()
+            self.Lambda_MAP = self.create_Lambda(self.fMAP,self.theta[0])
+            if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
+            if self.verbose: print("Updating posterior covariance...")
+            start = time.time()
+            try:
+                self.posterior_covariance_inv = self.Sigma_inv - self.Lambda_MAP #self.Sigma_inv + self.Lambda_MAP
+                self.posterior_covariance = pd_inverse(self.posterior_covariance_inv)
+            except:
+                print('---!!!--- Posterior covariance matrix is not PSD ---!!!---')
+                pass
+            if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
         if self.verbose: print("Computing mu_star and x_star ...")
         start = time.time()
-        if self.initialization_running and self.skip_computations_during_initialization:
+        if self.initialization_running and self.skip_computations_during_initialization and not self.skip_xstaroptimization_during_initialization:
             self.xstar, self.mustar, self.xstars_local = self.mu_star(mustar_finding_trials=1)
+        elif self.initialization_running and self.skip_xstaroptimization_during_initialization:
+            pass
         elif self.last_iteration:
             self.xstar, self.mustar, self.xstars_local = self.mu_star(mustar_finding_trials=5)    
         else:
@@ -143,15 +148,13 @@ class GPModel:
     
     ''' --- Covariance matrix --- '''
     
-    @staticmethod
-    def create_Gramian(X1,X2,kernel,*args): 
+    def create_Gramian(self,X1,X2,kernel,*args): 
         Sigma = kernel(X1,X2, *args)
         ''' REGULARIZATION OF THE COVARIANCE MATRIX'''
-        Sigma = regularize_covariance(Sigma,GPModel.COVARIANCE_SHRINKAGE)
+        Sigma = regularize_covariance(Sigma,self.COVARIANCE_SHRINKAGE)
         return Sigma
 
-    @staticmethod
-    def create_Gramian_nonsquare(X1,X2,kernel,*args): 
+    def create_Gramian_nonsquare(self,X1,X2,kernel,*args): 
         Sigma = kernel(X1,X2, *args)
         return Sigma
 
@@ -326,7 +329,7 @@ class GPModel:
 
     ''' --- Optimizations --- '''
     
-    def update_fMAP(self,random_initial_vector=None,fmap_finding_trials=None):
+    def update_fMAP(self,random_initial_vector=None,fmap_finding_trials=None,approx_optimization=False):
         ''' Finds MAP estimate and updates it '''
         if fmap_finding_trials is None:
             fmap_finding_trials = self.fMAP_finding_trials  
@@ -337,6 +340,10 @@ class GPModel:
             verbose = False
         else:
             verbose=self.verbose
+        if approx_optimization:
+            options = {'disp': verbose,'gtol': 100}
+        else:
+            options = {'disp': verbose}
         if self.verbose: print("MAP-estimation begins...")
         start = time.time()
         min_ = 10**24
@@ -352,7 +359,7 @@ class GPModel:
                 f_initial = np.random.multivariate_normal([0]*self.N, self.Sigma).reshape(self.N,1)
             res = scipy.optimize.minimize(lambda f: -self.T(f,self.theta), f_initial, method=self.fMAP_optimizer,
                            jac=lambda f: -self.T_grad(f,self.theta), hess=lambda f: -self.T_hessian(f,self.theta),
-                           options={'disp': verbose,'maxiter': self.max_iter_fMAP_estimation})
+                           options=options)
             if self.verbose: print('... this took ' + str(time.time()-start) + ' seconds.')
             if res.fun < min_:
                 min_ = res.fun
