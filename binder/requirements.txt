@@ -10,4 +10,3 @@ oct2py==5.0.4
 jupyter_ui_poll
 ipywidgets==7.5.1
 joblib==0.15.0
-jupyter_ui_poll
