@@ -1,18 +1,15 @@
 from feedback_processing import FeedbackProcessing
-
-import numpy as np
-import scipy
-import scipy.stats
-
-from scipy.special import ndtr as std_normal_cdf #scipy.special.ndtr fast numerical integration for standard normal cdf
-from scipy.integrate import quad as integrate  #numerical integration
-from GPyOpt.methods import BayesianOptimization #Use as global optimizer e.g. fro evidence maximization
+from kernels import SE_kernel, RQ_kernel, camphor_copper_kernel
+from misc import inverse, is_positive_definite, pd_inverse, std_normal_pdf, var2_normal_pdf, pseudo_det, det, regularize_covariance
 
 from itertools import chain #To unlist lists of lists
 import time
-
-from kernels import SE_kernel, RQ_kernel, camphor_copper_kernel
-from misc import inverse, is_positive_definite, pd_inverse, std_normal_pdf, var2_normal_pdf, pseudo_det, det, regularize_covariance
+import numpy as np
+import scipy
+import scipy.stats
+from scipy.special import ndtr as std_normal_cdf #fast numerical integration for standard normal cdf
+from scipy.integrate import quad as integrate  #numerical integration
+from GPyOpt.methods import BayesianOptimization #Use as global optimizer for evidence maximization
 
 
 class GPModel:
@@ -20,14 +17,13 @@ class GPModel:
     Class for GP utility function model.
     Some methods are not inherited but composited from Feedback_Processing class
     """
-    
 
     def __init__(self, PPBO_settings):
         """
         Initializes the GP_Model object
         """
         
-        self.COVARIANCE_SHRINKAGE = 7e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 (1e-5 - 1e-6) 
+        self.COVARIANCE_SHRINKAGE = 1e-6 #An amount of shrinkage applied to Sigma. DEFAULT: 1e-6 (5e-5 - 1e-7) 
         #Low value is better but is numerically more unstable
         #Note! Higher value increases difference to random Fourier features approximation of f     
             
@@ -51,7 +47,7 @@ class GPModel:
   
         self.kernel = eval(PPBO_settings.kernel) #Kernel type
         self.theta_initial = PPBO_settings.theta_initial
-        self.theta = None #Most optimized theta
+        self.theta = None #Most optimized theta   #theta = (sigma,l,sigma_f)
         self.Sigma = None
         self.Sigma_inv = None
         self.Lambda_MAP = None
@@ -98,7 +94,7 @@ class GPModel:
             self.FP.alpha_grid_distribution = 'equispaced' #Always use 'equispaced' pseudo-observations in initialization
             self.update_fMAP(random_initial_vector=False,fmap_finding_trials=1,approx_optimization=True)
         elif self.last_iteration:
-            self.update_fMAP(random_initial_vector=True,fmap_finding_trials=5)
+            self.update_fMAP(random_initial_vector=True,fmap_finding_trials=10)
         else:
             self.update_fMAP()
         if optimize_theta:
@@ -130,7 +126,7 @@ class GPModel:
         elif self.initialization_running and self.skip_xstaroptimization_during_initialization:
             pass
         elif self.last_iteration:
-            self.xstar, self.mustar, self.xstars_local = self.mu_star(mustar_finding_trials=5)    
+            self.xstar, self.mustar, self.xstars_local = self.mu_star(mustar_finding_trials=1)
         else:
             self.xstar, self.mustar, self.xstars_local  = self.mu_star()
         if self.verbose: print("... this took " + str(time.time()-start) + " seconds.")
@@ -170,9 +166,9 @@ class GPModel:
         if self.theta[1] is None:
             self.theta[1] = 1
         if self.theta[2] is None:
-            self.theta[2] = 0.01
+            self.theta[2] = 0.1
         if self.theta[0] is None:
-            self.theta[0] = 0.01 
+            self.theta[0] = 8 
     
     ''' --- Functional T --- '''
     
@@ -280,12 +276,17 @@ class GPModel:
     ''' --- Evidence --- '''
     
     def evidence(self,theta,f_initial):
-        def prior(theta):
-            ''' Hyperparameter priors. This stabilizes the optimization '''
-            #https://keisan.casio.com/exec/system/1180573226
-            priortheta0 = scipy.stats.beta.pdf(theta[0], 0.0005, 35) #loc around 0
-            priortheta1 = scipy.stats.beta.pdf(theta[1], 15, 35) #loc around 0.3
-            priortheta2 = scipy.stats.beta.pdf(theta[2], 3, 20) #loc around 0.1
+        def log_prior(theta):
+            ''' Hyperparameter priors. This stabilizes the optimization. Otherwise evidence maximization will pick as small lengthscale as possible.'''
+            #theta = (sigma,l,sigma_f), where sigma will treated as a constant (1)
+            #https://keisan.casio.com/exec/system/1180573214
+            #x = np.linspace(0,10)
+            #y = scipy.stats.lognorm.pdf(x, s = 0.5,scale = np.exp(1.7)) 
+            #plt.plot(x,y)
+            #Orders of magnitude adopted from (Kim  et al., 2021)
+            priortheta0 = scipy.stats.lognorm.pdf(theta[0], s = 1,scale = np.exp(1)) #This is a constant anyway.
+            priortheta1 = scipy.stats.lognorm.pdf(theta[1], s = 0.5,scale = np.exp(-1.4)) 
+            priortheta2 = scipy.stats.lognorm.pdf(theta[2], s = 0.5,scale = np.exp(1.7)) 
             return np.log(priortheta0)+np.log(priortheta1)+np.log(priortheta2)
         if self.verbose: print('---------- Iter results ----------------')
         Sigma_ = self.create_Gramian(self.X,self.X,self.kernel,theta)
@@ -296,16 +297,20 @@ class GPModel:
                        options={'disp': False,'maxiter': 500}).x
         Lambda_MAP = self.create_Lambda(fMAP,theta[0])
     
-        ''' A straightforward (numerically unstable?) implementation '''
+        ''' LU-decomposition based implementation '''
         I = np.eye(self.N)
         matrix = I+Sigma_.dot(Lambda_MAP) 
-        (sign, logdet) = np.linalg.slogdet(matrix)
-        determinant = sign*np.exp(logdet)
-        #evidence = np.exp(self.T(fMAP,theta,Sigma_inv_))*np.power(determinant,-0.5)
-        log_evidence = self.T(fMAP,theta,Sigma_inv_) - 0.5*np.log(determinant) 
+        P,L,U = scipy.linalg.lu(matrix)
+        #Numerically unstable determinant:
+        #determinant = np.linalg.det(P)*np.linalg.det(L)*np.linalg.det(U)
+        #log_evidence = self.T(fMAP,theta,Sigma_inv_) - 0.5*np.log(determinant) 
+        (P_sign, P_logdet) = np.linalg.slogdet(P)
+        (L_sign, L_logdet) = np.linalg.slogdet(L)
+        (U_sign, U_logdet) = np.linalg.slogdet(U)
+        log_evidence = self.T(fMAP,theta,Sigma_inv_) - 0.5*(P_sign*P_logdet+L_sign*L_logdet+U_sign*U_logdet)
         if self.verbose: print('(scaled) Log-evidence: ' + str(log_evidence))
         if self.verbose: print('Hyper-parameters: ' + str(theta))
-        value = log_evidence + prior(theta)
+        value = log_evidence + log_prior(theta)
         if np.isnan(value) or not np.isfinite(value):
             if self.verbose: print('Nan log-evidence!')
             return -500
@@ -313,7 +318,24 @@ class GPModel:
             if self.verbose: print('(scaled) Log-evidence + Log-prior: ' + str(value))
             return value
         
-        ''' An implementation based on Cholesky-decomposition '''
+        ''' A straightforward (numerically unstable?) implementation '''
+        #I = np.eye(self.N)
+        #matrix = I+Sigma_.dot(Lambda_MAP) 
+        #(sign, logdet) = np.linalg.slogdet(matrix)
+        #determinant = sign*np.exp(logdet)
+        ##evidence = np.exp(self.T(fMAP,theta,Sigma_inv_))*np.power(determinant,-0.5)
+        #log_evidence = self.T(fMAP,theta,Sigma_inv_) - 0.5*np.log(determinant) 
+        #if self.verbose: print('(scaled) Log-evidence: ' + str(log_evidence))
+        #if self.verbose: print('Hyper-parameters: ' + str(theta))
+        #value = log_evidence + log_prior(theta)
+        #if np.isnan(value) or not np.isfinite(value):
+        #    if self.verbose: print('Nan log-evidence!')
+        #    return -500
+        #else:
+        #    if self.verbose: print('(scaled) Log-evidence + Log-prior: ' + str(value))
+        #    return value
+        
+        ''' Cholesky-decomposition based implementation'''
         #try:
         #    posterior_covariance_inv = Sigma_inv_ - Lambda_MAP #Sigma_inv_ + Lambda_MAP
         #    posterior_covariance = pd_inverse(posterior_covariance_inv)
@@ -373,16 +395,19 @@ class GPModel:
         #BayesianOptimization
         #Higher lengthscale generates more accurate GP mean (and location of maximizer of mean)
         #However, higher lengthscale also generates less accurate argmax distribution (argmax samples are widepread)   
+        sigma_bounds =  (1,1) #CONSTANT!
+        l_bounds =  (0.01,2)
+        sigma_f_bounds =  (0.1,15)
         ''' Bounds for hyperparameters: When COVARIANCE_SHRINKAGE = 1e-6'''
-        bounds = [{'name': 'sigma', 'type': 'continuous', 'domain': (0.0001,0.1)}, #Too low noise gives non-PSD covariance matrix
-                   {'name': 'leghtscale', 'type': 'continuous', 'domain': (0.05,0.9)}, #Theoretical l max: 4*np.sqrt(self.D)
-                   {'name': 'sigma_l', 'type': 'continuous', 'domain': (0.01,0.5)}] # since f is a utility function this parameter make no much sense. 
+        bounds = [{'name': 'sigma', 'type': 'continuous', 'domain':  sigma_bounds}, #Too low noise gives non-PSD covariance matrix
+                   {'name': 'leghtscale', 'type': 'continuous', 'domain': l_bounds}, #Theoretical l max: 4*np.sqrt(self.D)
+                   {'name': 'sigma_f', 'type': 'continuous', 'domain': sigma_f_bounds}] # since f is a utility function this parameter make no much sense. 
         BO = BayesianOptimization(lambda theta: -self.evidence(theta[0],self.fMAP), #theta[0] since need to unnest list one level
                                   domain=bounds,
                                   optimize_restarts=3,
                                   normalize_Y=True,
                                   initial_design_numdata=20)
-        BO.run_optimization(max_iter = 50)
+        BO.run_optimization(max_iter = 40)
         if self.verbose: print('Optimization of hyperparameters took ' + str(time.time()-start) + ' seconds.')
         self.theta = BO.x_opt
         if self.verbose: print("The optimized theta is "+ str(self.theta))

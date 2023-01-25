@@ -9,13 +9,13 @@ class PPBO_settings:
                  D,
                  bounds,
                  xi_acquisition_function,
-                 theta_initial=[0.001,0.26,0.1],#[0.1,0.17,0.36]
+                 theta_initial= [1,0.1,8],
                  user_feedback_grid_size=100,  
                  m=25,
                  verbose=True,
                  EI_EXR_mc_samples=150,        
                  EI_EXR_BO_maxiter=20,
-                 mustar_finding_trials=3,
+                 mustar_finding_trials=3, 
                  kernel='SE_kernel',
                  skip_computations_during_initialization=True, #Remember GP_model.turn_initialization_off() in PPBO-loop after final initial query!,
                  skip_xstaroptimization_during_initialization=False,
@@ -48,11 +48,11 @@ class PPBO_settings:
         ''' PSEUDO-OBSERVATIONS '''
         self.n_pseudoobservations = m  #How many pseudo-observations. Note that Sigma condition number grows w.r.t. that!
         self.alpha_grid_distribution = alpha_grid_distribution  #How pseudo-observations are distributed?: equispaced, Cauchy or TGN (truncated generalized normal distribution). Default: equispaced
-        self.TGN_speed = 0.3 #a speed of transformation from uniform dist to normal dist if TGN is selected,  0.3-0.4
-        self.n_gausshermite_sample_points = 40 #How many sample points in GaussHermite quadrature for approximating the convolution in the likelihood?
+        self.TGN_speed = 0.4 #a speed of transformation from uniform dist to normal dist if TGN is selected,  0.3-0.4. Note this the higher self.TGN_speed, the slower is the transformation.
+        self.n_gausshermite_sample_points = 200 #Old = 40 #How many sample points in GaussHermite quadrature for approximating the convolution in the likelihood?
 
         ''' ACQUISITION STRATEGY '''
-        #Strategies available: [PCD,EXT,RAND,EI,EI-FIXEDX,EXR,EI-EXT,EI-EXT-FAST,EI-VARMAX,EI-VARMAX-FAST]
+        #Strategies available: [PCD,EXT,RAND,EI,EI-FIXEDX,EXR,EI-EXT,EI-EXT-FAST,EI-VARMAX,EI-VARMAX-FAST,COORDINATE-VARMAX]
         self.mc_samples = EI_EXR_mc_samples
         self.BO_maxiter = EI_EXR_BO_maxiter
         self.xi_acquisition_function = xi_acquisition_function
@@ -64,8 +64,11 @@ class PPBO_settings:
         elif self.xi_acquisition_function == 'EI' or self.xi_acquisition_function == 'EI-FIXEDX' or self.xi_acquisition_function == 'EXR':
             self.x_acquisition_function = 'none'
             #Initial nonzero dimensions of xi
+            if self.D > 2:
+                self.xi_dims_prev_iter = [0,1]
+            else:
+                self.xi_dims_prev_iter = [1]
             #self.xi_dims_prev_iter = list(range(self.D - 1))
-            self.xi_dims_prev_iter = [0,1]
         elif self.xi_acquisition_function == 'EI-EXT' or self.xi_acquisition_function == 'EI-EXT-FAST':
             self.x_acquisition_function = 'exploit'
         elif self.xi_acquisition_function == 'EI-VARMAX' or self.xi_acquisition_function == 'EI-VARMAX-FAST' or self.xi_acquisition_function == 'COORDINATE-VARMAX':
